@@ -346,10 +346,11 @@ export default function FlashPage({ view }: { view: "convert" | "restore" }) {
       <header className="site-header"><div className="brand"><img src={sitePath("openpill.svg")} alt="" /><span>OpenPill</span></div><a className="header-link" href={routeUrl("/")} onClick={(event) => handleInternalLink(event, "/")}><ArrowLeftOutlined /> Your Pills</a></header>
       <div className="flash-heading"><h1>{view === "convert" ? "Convert your RAPT Pill to OpenPill" : "Restore your Pill"}</h1><p>{view === "convert" ? "This guided process uses an ESP32 development board to connect to your Pill. We strongly recommend saving a recovery copy before installing." : "Switch back to firmware already on your Pill, or restore from a recovery copy."}</p>
         <Button type="link" className="flash-view-link" disabled={!!work} onClick={() => { setError(""); setErrorDetails(""); setMessage(""); navigate(view === "convert" ? "/restore" : "/flash"); }}>{view === "convert" ? "Restore from a recovery copy" : "Back to conversion"}</Button></div>
-      {view === "convert" && <Steps className="flash-steps" current={wizardStep} responsive items={[
-        { title: "Prepare board" }, { title: "Connect Pill" },
-        { title: skipBackup && wizardStep > 2 ? "Backup skipped" : "Backup", status: skipBackup && !backup && wizardStep > 2 ? "wait" : undefined },
-        { title: "Install" }
+      {view === "convert" && <Steps className="flash-steps" current={wizardStep} responsive onChange={(step) => { if (!work) showStep(step); }} items={[
+        { title: "Prepare board", status: wizardStep === 0 ? "process" : bridgeReady ? "finish" : "wait", disabled: !!work },
+        { title: "Connect Pill", status: wizardStep === 1 ? "process" : linked ? "finish" : "wait", disabled: !!work },
+        { title: skipBackup ? "Backup skipped" : "Backup", status: wizardStep === 2 ? "process" : backup ? "finish" : "wait", disabled: !!work },
+        { title: "Install", status: finished ? "finish" : wizardStep === 3 ? "process" : "wait", disabled: !!work }
       ]} />}
 
       {view === "convert" && wizardStep === 0 && <Card className="flash-card" title="1. Prepare the ESP32 bridge">
