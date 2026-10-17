@@ -28,9 +28,10 @@ flash contents.
   `docs/ble-ota.md`.
 - An OTA upload always replaces the inactive 1.5 MiB application slot.
 - Verify builds and serial writes. Keep UART output at 115200 baud for recovery.
-- This is test work; do not create commits or push it unless the user later asks.
-- When committing is requested, use a descriptive subject and a detailed,
-  multiline commit message where the scope of the change warrants it.
+- Commit completed, verified changes as you go in focused commits. Do not push
+  unless the user asks.
+- Use a descriptive subject and a detailed, multiline commit message where the
+  scope of the change warrants it.
 
 ## Documentation and source wording
 
