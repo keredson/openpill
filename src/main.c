@@ -180,18 +180,16 @@ void app_main(void)
 
     bool vertical_entry = orientation == HARDWARE_ORIENTATION_VERTICAL &&
                           !retained.vertical_latched;
-    bool movement_wake = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1;
     bool software_restart = esp_reset_reason() == ESP_RST_SW;
     if (orientation != HARDWARE_ORIENTATION_VERTICAL) {
         retained.vertical_latched = false;
     }
 
-    if (charger_inserted || vertical_entry || movement_wake || software_restart) {
+    if (charger_inserted || vertical_entry || software_restart) {
         retained.vertical_latched = orientation == HARDWARE_ORIENTATION_VERTICAL;
         printf("Power: maintenance requested by %s\n",
                charger_inserted ? "external power" :
-               vertical_entry ? "orientation" :
-               movement_wake ? "movement" : "software restart");
+               vertical_entry ? "orientation" : "software restart");
         esp_err_t error = ble_ota_run_maintenance(config.ble_window_s, &sample);
         if (error != ESP_OK) {
             printf("BLE maintenance failed: %s\n", esp_err_to_name(error));

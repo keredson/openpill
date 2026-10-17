@@ -1053,6 +1053,7 @@ static void window_task(void *unused)
 {
     (void)unused;
     unsigned phase = 0;
+    unsigned horizontal_idle_seconds = 0;
     while (!closing) {
         if (!led_animation_paused) {
             if (session.state == OTA_STATE_RECEIVING ||
@@ -1068,10 +1069,26 @@ static void window_task(void *unused)
                 (void)hardware_set_led((uint8_t)(3 + triangle));
             }
         }
-        if (!client_connected && session.state != OTA_STATE_RECEIVING &&
-            session.state != OTA_STATE_VERIFYING &&
-            config_state != CONFIG_STATE_TESTING &&
-            xTaskGetTickCount() - idle_since >= pdMS_TO_TICKS(window_seconds * 1000)) {
+        bool idle = !client_connected && session.state != OTA_STATE_RECEIVING &&
+                    session.state != OTA_STATE_VERIFYING &&
+                    config_state != CONFIG_STATE_TESTING;
+        /* Allow a brief reconnect after a restart or disconnect, then leave
+         * maintenance if the unconnected Pill remains on its side. */
+        if (idle && phase % 20 == 0) {
+            hardware_sample_t sample;
+            (void)hardware_read(&sample);
+            horizontal_idle_seconds = hardware_orientation(&sample) ==
+                                      HARDWARE_ORIENTATION_HORIZONTAL
+                                          ? horizontal_idle_seconds + 1 : 0;
+        } else if (!idle) {
+            horizontal_idle_seconds = 0;
+        }
+        if (idle && (horizontal_idle_seconds >= 10 ||
+                     xTaskGetTickCount() - idle_since >=
+                         pdMS_TO_TICKS(window_seconds * 1000))) {
+            if (horizontal_idle_seconds >= 10) {
+                printf("BLE: closing idle maintenance window while horizontal\n");
+            }
             closing = true;
             if (ble_gap_adv_active()) {
                 (void)ble_gap_adv_stop();
