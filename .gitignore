@@ -1,5 +1,6 @@
 .pio/
 sdkconfig.*
+!sdkconfig.defaults
 ignore/
 agents.md
 web/node_modules/

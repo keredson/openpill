@@ -9,6 +9,7 @@ on:
       - "src/**"
       - "Makefile"
       - "platformio.ini"
+      - "sdkconfig.defaults"
       - "partitions.csv"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
