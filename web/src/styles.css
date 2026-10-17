@@ -168,6 +168,9 @@ h3 { font-size: 18px; font-weight: 680; }
 .firmware-update-progress { margin-top: 18px; }
 .firmware-update-progress p { margin-bottom: 8px; }
 .firmware-update-progress small { color: var(--muted); }
+.firmware-update-success { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 0 12px; color: #2b7055; text-align: center; }
+.firmware-update-success .anticon { font-size: 68px; line-height: 1; }
+.firmware-update-success p { margin: 0; font-size: 18px; font-weight: 600; }
 .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .modal-actions > span { flex: 1; color: var(--muted); font-size: 12px; }
 .unit-settings { display: grid; gap: 20px; padding: 8px 0; }

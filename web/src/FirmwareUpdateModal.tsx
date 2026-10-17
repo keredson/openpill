@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Modal, Progress } from "antd";
+import { CheckCircleFilled } from "@ant-design/icons";
 import { FirmwareImage, loadFirmwareImage, OtaProgress, PublicConfig } from "./ble";
 
 export default function FirmwareUpdateModal({ name, config, connected, reconnecting, onClose, onInstall }: {
@@ -31,7 +32,8 @@ export default function FirmwareUpdateModal({ name, config, connected, reconnect
 
   const installed = !!image && !!config.firmware_elf_sha256 &&
     image.elfSha256.toLowerCase() === config.firmware_elf_sha256.toLowerCase();
-  const confirmed = complete && (alreadyCurrent || (connected && installed));
+  const updateConfirmed = complete && !alreadyCurrent && connected && installed;
+  const confirmed = complete && (alreadyCurrent || updateConfirmed);
   const older = !!image && !!config.firmware_version && (() => {
     const current = config.firmware_version!.match(/^(\d+)\.(\d+)\.(\d+)$/);
     const candidate = image.version.match(/^(\d+)\.(\d+)\.(\d+)$/);
@@ -84,9 +86,11 @@ export default function FirmwareUpdateModal({ name, config, connected, reconnect
         <Progress percent={percent} status={progress.phase === "restarting" ? "success" : "active"} />
         {progress.phase === "uploading" && <small>{progress.accepted.toLocaleString()} / {progress.total.toLocaleString()} bytes accepted</small>}
       </div>}
-      {complete && <p>{alreadyCurrent ? `Firmware v${image?.version} is already installed. No update was sent.`
-        : connected && config.firmware_elf_sha256?.toLowerCase() === image?.elfSha256.toLowerCase()
-        ? `Firmware v${config.firmware_version} is installed and the Pill is connected.`
+      {updateConfirmed && <div className="firmware-update-success" role="status">
+        <CheckCircleFilled aria-hidden="true" />
+        <p>Update complete</p>
+      </div>}
+      {complete && !updateConfirmed && <p>{alreadyCurrent ? `Firmware v${image?.version} is already installed. No update was sent.`
         : reconnecting ? "Firmware verified. Waiting for the Pill to restart and reconnect…"
           : "The update was verified, but automatic reconnection did not confirm the installed version. Close this dialog and use Connect to try again."}</p>}
       <div className="modal-actions">
