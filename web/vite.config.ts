@@ -57,10 +57,14 @@ function serveLocalFirmware(): Plugin {
 
 export default defineConfig(({ command }) => {
   const base = command === "build" ? "/openpill/" : "/";
-  if (command === "build" && existsSync(localFirmware)) {
-    mkdirSync(fileURLToPath(new URL("./public/firmware/", import.meta.url)), { recursive: true });
-    copyFileSync(localFirmware, stagedFirmware);
-    writeFileSync(stagedManifest, JSON.stringify(firmwareManifest(readFileSync(localFirmware))));
+  if (command === "build") {
+    if (existsSync(localFirmware)) {
+      mkdirSync(fileURLToPath(new URL("./public/firmware/", import.meta.url)), { recursive: true });
+      copyFileSync(localFirmware, stagedFirmware);
+    }
+    if (existsSync(stagedFirmware)) {
+      writeFileSync(stagedManifest, JSON.stringify(firmwareManifest(readFileSync(stagedFirmware))));
+    }
   }
   return {
     base,

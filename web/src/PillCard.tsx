@@ -378,9 +378,11 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
       ? formatGravity(broadcast.reading.gravity, units.gravity) : lastGravity != null ? formatGravity(lastGravity, units.gravity) : "—";
   const lastSeenAt = Math.max(lastRead?.getTime() ?? 0, broadcast?.at.getTime() ?? 0, pill.readAt ?? 0, history[history.length - 1]?.at ?? 0);
   const firmwareVersion = connected ? config?.firmware_version : pill.firmwareVersion;
+  const runningSlot = connected ? config?.running_slot : pill.config?.running_slot;
   const firmwareInfo = <section className="settings-firmware">
     <div className="firmware-settings-row">
-      <span><strong>Firmware</strong><small>{firmwareVersion ? `${connected ? "Version" : "Last known version"} v${firmwareVersion.replace(/^v/, "")}` : "Version available when connected"}</small></span>
+      <span><strong>Firmware</strong><small>{firmwareVersion ? `${connected ? "Version" : "Last known version"} v${firmwareVersion.replace(/^v/, "")}` : "Version available when connected"}</small>
+        {runningSlot && <small>{connected ? "Running partition" : "Last known partition"}: {runningSlot}</small>}</span>
       {(firmwareVersion || connected) && <span className="firmware-row-actions"><Button onClick={() => void checkUpdates()} loading={busy === "checking"} disabled={!connected || (busy !== null && busy !== "checking")}>Check for updates</Button><Button onClick={() => { setSettingsOpen(false); setUpdateOpen(true); }} disabled={!device || busy !== null}>Update firmware</Button></span>}
     </div>
     {sample && (!(sample.valid & 4) || sample.batteryMv > 4300) && <p>Battery reading unavailable; firmware updates are blocked.</p>}

@@ -8,6 +8,7 @@ on:
       - "bridge/**"
       - "src/**"
       - "Makefile"
+      - "CMakeLists.txt"
       - "platformio.ini"
       - "sdkconfig.defaults"
       - "partitions.csv"
@@ -35,11 +36,20 @@ jobs:
         with:
           node-version: 22
       - run: corepack enable
+      - name: Restore firmware build artifacts
+        id: firmware-cache
+        uses: actions/cache@v4
+        with:
+          path: web/public/firmware
+          key: firmware-${{ runner.os }}-${{ hashFiles('src/**', 'bridge/src/**', 'CMakeLists.txt', 'bridge/CMakeLists.txt', 'platformio.ini', 'bridge/platformio.ini', 'sdkconfig.defaults', 'partitions.csv', 'Makefile', '.github/workflows/pages.yml') }}
       - uses: actions/setup-python@v5
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
         with:
           python-version: "3.11"
       - run: python -m pip install platformio
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
       - name: Build Pill and bridge firmware assets
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
         run: make web-assets
       - name: Install PWA dependencies
         run: yarn install --immutable
