@@ -2,8 +2,9 @@
 
 During a physically triggered maintenance window, the device advertises as
 `OpenPill-xxxxxx` and exposes OTA, configuration, and diagnostics services.
-The default no-connection window is 300 seconds. Connecting pauses the timer;
-disconnecting starts it again. Scheduled telemetry uses a short,
+The no-connection window is fixed at 300 seconds. A disconnected Pill that
+remains horizontal closes it after about 10 seconds. Connecting pauses the
+timer; disconnecting starts it again. Scheduled telemetry uses a short,
 non-connectable advertising burst and does not expose GATT services.
 Current firmware does not require operating-system BLE pairing for the PWA.
 Sensors, OTA, and status are public GATT characteristics. Configuration values,

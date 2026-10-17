@@ -675,7 +675,6 @@ static int config_command_packet(uint8_t command)
         app_config_get(&current);
         if (staged_config.schema_version != current.schema_version ||
             staged_config.wake_interval_s != current.wake_interval_s ||
-            staged_config.ble_window_s != current.ble_window_s ||
             staged_config.wifi_timeout_s != current.wifi_timeout_s ||
             staged_config.ble_telemetry != current.ble_telemetry ||
             staged_config.wifi_telemetry != current.wifi_telemetry ||

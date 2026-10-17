@@ -70,15 +70,16 @@ Detecting a newly connected charger also opens one maintenance window. Remaining
 plugged in does not keep BLE available and does not repeatedly reopen the
 window.
 
-A significant accelerometer interrupt also opens a maintenance window regardless
-of the final orientation. The wake threshold is about 0.25 g at the sensor's
-±2 g range and needs physical tuning to reject ordinary bumps. Firmware checks
+A significant accelerometer interrupt wakes the Pill to recheck its orientation,
+but motion alone does not open a maintenance window. The wake threshold is about
+0.25 g at the sensor's ±2 g range and needs physical tuning to reject ordinary
+bumps. Firmware checks
 that the sensor's interrupt reaches the ESP32 wake pin before sleeping without
 a timer; if it cannot confirm the line, it uses a 60-second safety wake instead.
 
 ## BLE maintenance window
 
-The default maintenance window is five minutes while no client is connected.
+The no-connection maintenance limit is fixed at five minutes, not configurable.
 
 - A BLE connection suspends the no-connection timer.
 - Disconnecting restarts the five-minute timer.
@@ -86,8 +87,9 @@ The default maintenance window is five minutes while no client is connected.
   transaction.
 - When the timer expires, connectable advertising stops and the device returns
   to the mode selected by its orientation.
+- A disconnected Pill that stays horizontal leaves maintenance after about ten
+  seconds, without waiting for the five-minute limit.
 - Moving away from vertical and standing the Pill up again opens a new window.
-- A significant movement opens a new window, including from horizontal storage.
 - A new charger-insertion event opens a new window.
 
 The maintenance service provides diagnostics, configuration, and OTA. Scheduled
@@ -297,7 +299,6 @@ NVS partition. Initial keys are:
 | `schema_ver` | `u32` | Configuration schema version, initially 1 |
 | `wake_interval_s` | `u32` | Import an existing compatible interval when available; otherwise 900 |
 | `ble_telem` | `u8` | Enable scheduled BLE telemetry |
-| `ble_window_s` | `u32` | No-connection maintenance timeout, initially 300 |
 | `wifi_telem` | `u8` | Enable scheduled Wi-Fi telemetry |
 | `auto_update` | `u8` | Development-only opt-in to weekly Wi-Fi checks and installation; do not expose automatic installation to users until the recovery gate above is met |
 | `wifi_ssid` | string/blob | OpenPill Wi-Fi network name |

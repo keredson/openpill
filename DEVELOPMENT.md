@@ -235,13 +235,14 @@ its manifest; it does not protect against a compromised publishing account.
 
 ## Device behavior while testing
 
-- Horizontal: storage sleep, with no scheduled report or connectable BLE until
-  a significant movement wakes the Pill for a maintenance window.
+- Horizontal: storage sleep, with no scheduled report. Movement wakes the Pill
+  to reassess orientation but does not by itself open connectable BLE.
 - Floating: report on the configured interval (15 minutes by default), then
   sleep. BLE and Wi-Fi reports are independently optional.
-- Significant movement, vertical entry, or newly detected external power: one
-  maintenance window. An active BLE connection
-  pauses its timeout; disconnecting restarts it.
+- Vertical entry or newly detected external power: one maintenance window.
+  An active BLE connection pauses its fixed five-minute no-connection limit;
+  disconnecting restarts it. A disconnected horizontal Pill closes the window
+  after about ten seconds.
 - GPIO23 detects external power but cannot itself wake the ESP32 from deep
   sleep. Charger insertion from stationary storage may need movement to
   trigger the accelerometer wake line.

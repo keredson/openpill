@@ -18,6 +18,7 @@
 #define RTC_STATE_MAGIC 0x4f50494cU
 #define ACCEL_WAKE_GPIO 34
 #define SAFE_FALLBACK_WAKE_SECONDS 60
+#define BLE_MAINTENANCE_WINDOW_SECONDS 300
 #define UPDATE_WEEK_SECONDS (7U * 24U * 60U * 60U)
 #define UPDATE_RETRY_SECONDS (24U * 60U * 60U)
 
@@ -190,7 +191,8 @@ void app_main(void)
         printf("Power: maintenance requested by %s\n",
                charger_inserted ? "external power" :
                vertical_entry ? "orientation" : "software restart");
-        esp_err_t error = ble_ota_run_maintenance(config.ble_window_s, &sample);
+        esp_err_t error = ble_ota_run_maintenance(BLE_MAINTENANCE_WINDOW_SECONDS,
+                                                  &sample);
         if (error != ESP_OK) {
             printf("BLE maintenance failed: %s\n", esp_err_to_name(error));
             hardware_led_sos_twice();

@@ -83,7 +83,7 @@ export default function App() {
       <ol>
         <li><strong>Stand your Pill on its clear end, or put it on the charger.</strong><span>If standing it up, keep the colored cap at the top for a few seconds.</span></li>
         <li><strong>Look for the green status light.</strong><span>It should slowly brighten and dim, like the Pill shown here.</span></li>
-        <li><strong>Connect to your Pill.</strong><span>Select it from the list. It stays available for five minutes.</span>
+        <li><strong>Connect to your Pill.</strong><span>Select it from the list. It stays available for up to five minutes.</span>
           <Button className="guide-button" type="primary" size="large" onClick={() => void addPill()} loading={choosing}>Connect to Pill</Button>
         </li>
       </ol>

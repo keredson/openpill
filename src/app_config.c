@@ -23,7 +23,6 @@ static void defaults(app_config_t *config)
     memset(config, 0, sizeof(*config));
     config->schema_version = CONFIG_SCHEMA_VERSION;
     config->wake_interval_s = 3600;
-    config->ble_window_s = 300;
     config->wifi_timeout_s = 15;
     config->ble_telemetry = true;
     config->auto_wifi_update = true;
@@ -41,8 +40,6 @@ static esp_err_t validate(const app_config_t *config, char *message, size_t size
         error = "unsupported configuration schema";
     } else if (config->wake_interval_s < 60 || config->wake_interval_s > 86400) {
         error = "wake interval must be between 60 and 86400 seconds";
-    } else if (config->ble_window_s < 60 || config->ble_window_s > 1800) {
-        error = "BLE window must be between 60 and 1800 seconds";
     } else if (config->wifi_timeout_s < 5 || config->wifi_timeout_s > 60) {
         error = "Wi-Fi timeout must be between 5 and 60 seconds";
     } else if (!valid_text(config->wifi_ssid, APP_CONFIG_SSID_MAX) ||
@@ -161,7 +158,6 @@ esp_err_t app_config_init(void)
 
     get_u32(handle, "schema_ver", &active_config.schema_version);
     get_u32(handle, "wake_interval_s", &active_config.wake_interval_s);
-    get_u32(handle, "ble_window_s", &active_config.ble_window_s);
     get_u32(handle, "wifi_timeout_s", &active_config.wifi_timeout_s);
     get_bool(handle, "ble_telem", &active_config.ble_telemetry);
     get_bool(handle, "wifi_telem", &active_config.wifi_telemetry);
@@ -271,7 +267,6 @@ esp_err_t app_config_stage_json(const char *json, app_config_t *output,
     esp_err_t error = ESP_OK;
 #define APPLY_JSON(call) do { if (error == ESP_OK) { error = (call); } } while (0)
     APPLY_JSON(json_u32(root, "wake_interval_s", &output->wake_interval_s));
-    APPLY_JSON(json_u32(root, "ble_window_s", &output->ble_window_s));
     APPLY_JSON(json_u32(root, "wifi_timeout_s", &output->wifi_timeout_s));
     APPLY_JSON(json_bool(root, "ble_telemetry", &output->ble_telemetry));
     APPLY_JSON(json_bool(root, "wifi_telemetry", &output->wifi_telemetry));
@@ -310,7 +305,6 @@ esp_err_t app_config_commit(const app_config_t *config)
 #define SET_VALUE(call) do { if (error == ESP_OK) { error = (call); } } while (0)
     SET_VALUE(nvs_set_u32(handle, "schema_ver", config->schema_version));
     SET_VALUE(nvs_set_u32(handle, "wake_interval_s", config->wake_interval_s));
-    SET_VALUE(nvs_set_u32(handle, "ble_window_s", config->ble_window_s));
     SET_VALUE(nvs_set_u32(handle, "wifi_timeout_s", config->wifi_timeout_s));
     SET_VALUE(nvs_set_u8(handle, "ble_telem", config->ble_telemetry));
     SET_VALUE(nvs_set_u8(handle, "wifi_telem", config->wifi_telemetry));
@@ -360,7 +354,6 @@ esp_err_t app_config_public_json(char *output, size_t output_size)
         cJSON_AddStringToObject(root, "running_slot", running->label);
     }
     cJSON_AddNumberToObject(root, "wake_interval_s", config.wake_interval_s);
-    cJSON_AddNumberToObject(root, "ble_window_s", config.ble_window_s);
     cJSON_AddNumberToObject(root, "wifi_timeout_s", config.wifi_timeout_s);
     cJSON_AddBoolToObject(root, "ble_telemetry", config.ble_telemetry);
     cJSON_AddBoolToObject(root, "wifi_telemetry", config.wifi_telemetry);

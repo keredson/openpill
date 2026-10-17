@@ -102,7 +102,6 @@ export default function SettingsModal({ name, config, connected, connecting, onC
     }
     const patch: ConfigPatch = {
       wake_interval_s: draft.wake_interval_s,
-      ble_window_s: draft.ble_window_s,
       wifi_timeout_s: draft.wifi_timeout_s,
       ble_telemetry: draft.ble_telemetry,
       wifi_telemetry: draft.wifi_telemetry,

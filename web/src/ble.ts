@@ -61,7 +61,6 @@ export interface PublicConfig {
   firmware_elf_sha256?: string;
   running_slot?: string;
   wake_interval_s: number;
-  ble_window_s: number;
   wifi_timeout_s: number;
   ble_telemetry: boolean;
   wifi_telemetry: boolean;
@@ -74,7 +73,6 @@ export interface PublicConfig {
 
 export interface ConfigPatch {
   wake_interval_s: number;
-  ble_window_s: number;
   wifi_timeout_s: number;
   ble_telemetry: boolean;
   wifi_telemetry: boolean;

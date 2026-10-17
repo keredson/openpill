@@ -13,7 +13,6 @@
 typedef struct {
     uint32_t schema_version;
     uint32_t wake_interval_s;
-    uint32_t ble_window_s;
     uint32_t wifi_timeout_s;
     bool ble_telemetry;
     bool wifi_telemetry;
