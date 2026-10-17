@@ -1,114 +1,59 @@
 # OpenPill
 
-For build, command-line flashing, and PWA setup, see
-[DEVELOPMENT.md](DEVELOPMENT.md).
+OpenPill is open-source firmware and an app for the original
+ESP32-based RAPT Pill hydrometer. It lets the Pill report temperature, specific
+gravity, and battery level directly over Bluetooth, or send readings by Wi-Fi
+as JSON to a POST URL you choose. No cloud account or service is required.
 
-OpenPill is low-power firmware and a browser configurator for the ESP32-based
-Pill hydrometer. It reads acceleration, temperature, battery voltage, and
-external-power presence. Scheduled readings can be broadcast over BLE, pushed
-as JSON over Wi-Fi, or both.
+## Why OpenPill?
 
-Normal operation is orientation driven:
+I started this project because the original rapt.io app felt laggy in my use.
+The newer app also appeared to replace the free webhook workflow I had used
+with an API that required a paid or premium account. I like open hardware and
+software, and wanted a way to use the Pill without depending on a particular
+cloud service or integration policy. OpenPill gives owners a direct connection
+to the device and control over where its readings go. It is another option,
+not a replacement for the whole RAPT platform.
 
-- Horizontal: storage mode, with radios and the periodic timer off.
-- Floating: wake on the configured interval, report, and return to sleep.
-- Standing on end: open a five-minute connectable BLE maintenance window.
-- A significant movement: open the same temporary BLE window, even if the Pill
-  remains horizontal.
-- Newly detected external power: open one maintenance window, not permanent
-  advertising.
+## What it does
 
-The maintenance LED breathes dimly. It is steady while connected, pulses
-quickly during OTA, flashes twice on success, and sends SOS twice on a terminal
-failure.
+- Shows temperature, gravity, and battery readings in the browser when the
+  Pill is nearby. The app keeps a local history while it receives data.
+- Sends scheduled readings over Bluetooth, Wi-Fi, or both. Wi-Fi uploads are
+  JSON HTTP POST requests to an endpoint you choose. Your readings do not pass
+  through OpenPill servers.
+- Lets you configure Wi-Fi, reporting intervals, and firmware updates from a
+  browser. The web app is static and does not collect your credentials.
+- Conserves battery by sleeping between reports. Position and movement open a
+  short Bluetooth maintenance window for configuration and updates.
+- Continues to broadcast RAPT-compatible telemetry updates over Bluetooth.
 
-## Firmware
+OpenPill does not need a RAPT account for its own reporting or configuration.
+It does not reproduce RAPT's cloud features or integrations.
 
-Install PlatformIO and build from the repository root:
+## Getting started
 
-```sh
-make build
-```
+If your Pill is already running OpenPill, open the
+[web app](https://keredson.github.io/openpill/) in a browser with Web Bluetooth
+support, add the Pill, and use its Settings panel.
 
-The application image is `.pio/build/openpill/firmware.bin`. Configuration is
-stored only in the `openpill` NVS namespace. Existing calibration and compatible
-Wi-Fi values are imported without rewriting their namespaces; NVS is never
-erased as an error-recovery action.
+An original RAPT Pill needs a **one-time wired conversion** before the browser
+can manage it this way. This requires an ESP32 development board, five
+female-to-male jumper wires, the Pill's charger, and a desktop browser with
+Web Serial support. Follow the [initial conversion guide](docs/initial-conversion.md)
+and save a full recovery copy before installing. This process is reversible but
+requires you to handle the Pill's bare circuit board, which always has some
+risk of damage.
 
-Stand the Pill on end, then use the Linux/BlueZ command-line client. OTA works
-on battery at 30% or above; from 10% to under 30%, connect the charger. Below
-10%, charge the Pill before flashing.
-`make flash-pill-via-ble` builds, scans for nearby Pills, and asks you to select one:
+For firmware builds, command-line tools, and deployment, see
+[DEVELOPMENT.md](DEVELOPMENT.md). The [recovery guide](docs/recovery.md)
+covers failures and restoring a saved copy; [BLE OTA details](docs/ble-ota.md)
+document the update protocol.
 
-```sh
-make probe
-make read
-make flash-pill-via-ble
-```
+## Current status
 
-The OTA service verifies the complete SHA-256 and ESP application image before
-selecting the inactive slot and restarting. The wire format is documented in
-[docs/ble-ota.md](docs/ble-ota.md).
-
-## PWA
-
-The `web/` directory contains a Vite + React PWA. It reads sensors, configures
-reporting and credentials, tests Wi-Fi before committing settings, displays the
-installed firmware version, and checks `keredson/openpill` for a newer GitHub
-release. Firmware upload is available in the PWA or with the command-line client.
-The PWA remembers Pills in this browser and stores timestamped sensor readings
-locally for history graphs while the page is receiving data.
-Its `/flash` guide can program an ESP32 development-board bridge, check the
-Pill over UART, save a recommended recovery backup, install OpenPill into the
-other application slot, and restore a saved recovery copy using
-the browser's Web Serial API. Use a desktop Chromium browser; conversion is
-separate from normal BLE configuration.
-
-```sh
-cd web
-yarn install
-yarn dev
-```
-
-Web Bluetooth requires a supporting browser, a secure context, and a user
-gesture. `localhost` is accepted for development. Production must be served by
-HTTPS.
-
-Pills running firmware before 0.2.0 still need the old BLE pairing path for
-their first PWA connection and upgrade. Once 0.2.2 or later is installed, the
-PWA configures them without `bluetoothctl` or another helper. If a 0.2.0 or 0.2.1 Pill
-fails during secure configuration reads, use **Settings → Update firmware**;
-that path can use only the public battery and OTA characteristics.
-Build the firmware before the production PWA so the site's bundled OTA image is
-the new version.
-
-If a Pill was updated from older firmware but the PWA still tries to read
-"legacy configuration," the computer may have cached the old GATT attribute
-list. On Linux, disconnect the PWA, run
-`bluetoothctl remove <PILL_MAC>` (using that Pill's address),
-then reload the PWA and select the Pill again. This clears the computer's
-Bluetooth record; it does not erase Pill settings or PWA readings. Other
-platforms can remove the Pill in Bluetooth settings before reselecting it.
-
-The Pages workflow in `.github/workflows/pages.yml` builds `web/` on pushes to
-`main`. In the GitHub repository settings, select **GitHub Actions** as the
-Pages source and configure the custom domain there. The Vite build uses `/` as
-its base because a custom-domain site is served from the domain root. Add the
-domain's DNS records separately; no repository-specific `CNAME` is guessed.
-
-The PWA is cached after its first successful load, so it can subsequently open
-without Internet access. The page itself is static and never receives device
-credentials; browser JavaScript talks directly to the nearby device.
-
-## Security status
-
-This remains development firmware. The current PWA encrypts configuration
-reads and writes with an ephemeral app-layer session, without requiring OS
-pairing. Passwords and endpoint tokens are write-only and absent from telemetry.
-HTTPS endpoint validation is enabled by default. The BLE session has no device
-authentication, and OTA has no image signature. Physical activation and a short
-maintenance window reduce exposure but are not production-grade authentication.
-
-Before relying on the power state machine, complete the hardware validation
-checklist in [DESIGN.md](DESIGN.md), especially GPIO34 motion wake and current
-measurements.
+This is experimental firmware, not a finished consumer product. Bluetooth
+configuration uses an encrypted session but does not authenticate the nearby
+device, and firmware images are not signed. Test the setup before relying on
+it for a batch, keep your recovery copy private, and review the remaining
+hardware validation work in [DESIGN.md](DESIGN.md).
