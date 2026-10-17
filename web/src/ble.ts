@@ -1,5 +1,6 @@
 import { batteryPercentFromMv } from "./battery";
 import { SecureConfigChannel } from "./secureConfig";
+import { sitePath } from "./sitePath";
 
 export const UUID = {
   otaService: "369af8ff-2190-465f-b538-6df2fba7fcdc",
@@ -142,7 +143,7 @@ function hex(bytes: Uint8Array): string {
 }
 
 export async function loadFirmwareImage(): Promise<FirmwareImage> {
-  const response = await fetch("/firmware/openpill.bin", { cache: "no-store" });
+  const response = await fetch(sitePath("firmware/openpill.bin"), { cache: "no-store" });
   if (!response.ok) throw new Error("The firmware image is not available on this site.");
   const buffer = await response.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -178,7 +179,7 @@ const encoder = new TextEncoder();
 
 async function servedFirmwareElfHash(): Promise<string | null> {
   try {
-    const response = await fetch("/firmware/openpill.bin", { cache: "no-store" });
+    const response = await fetch(sitePath("firmware/openpill.bin"), { cache: "no-store" });
     if (!response.ok) return null;
     const image = new Uint8Array(await response.arrayBuffer());
     if (image.length < 0xd0) return null;

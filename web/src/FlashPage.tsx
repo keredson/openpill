@@ -3,7 +3,8 @@ import { Alert, Button, Card, Checkbox, ConfigProvider, Modal, Popconfirm, Progr
 import { ArrowLeftOutlined, UsbOutlined } from "@ant-design/icons";
 import { downloadBackup, downloadOtaSlot, listBackups, RecoveryBackup, saveBackup } from "./flashBackup";
 import { BridgeNotResponding, checkPillLink, chooseSerialPort, flashBridge, flashPill, inspectPillSlots, PillSlots, PillTrafficNotDetected, pingBridge, readPillBackup, resetPill, restoreOtaSlot, restorePill, SerialPortSelectionCancelled, sha256, switchPillSlot, TransferStage, validatePillBackup, verifyPill } from "./flashSerial";
-import { handleInternalLink, navigate } from "./navigation";
+import { handleInternalLink, navigate, routeUrl } from "./navigation";
+import { sitePath } from "./sitePath";
 import FlashPowerCheck from "./FlashPowerCheck";
 import FlashWiringDiagram from "./FlashWiringDiagram";
 
@@ -324,7 +325,7 @@ export default function FlashPage({ view }: { view: "convert" | "restore" }) {
     const transfer = kind === "flash" || kind === "restore";
     const showResult = view !== "restore" || lastWork === kind;
     return <div className="flash-feedback" aria-live="polite">
-      {!navigator.serial && <Alert type="warning" showIcon message="Web Serial is unavailable" description="Use a desktop Chromium browser over HTTPS or localhost. The Pill’s charging connector cannot flash its ESP32 directly." />}
+      {!navigator.serial && <Alert type="warning" showIcon message="Web Serial is unavailable" description="Use a desktop browser with Web Serial over HTTPS or localhost. The Pill’s charging connector cannot flash its ESP32 directly." />}
       {showResult && error && <Alert type="error" showIcon message={error} description={errorDetails && <details className="flash-diagnostics"><summary>See ESP32 startup output</summary><pre>{errorDetails}</pre></details>} />}
       {showResult && message && <Alert type={finished || restored || kind === "switch-slot" ? "success" : "info"} showIcon message={message} />}
       {work === kind && transfer && <div className="transfer-status">
@@ -342,7 +343,7 @@ export default function FlashPage({ view }: { view: "convert" | "restore" }) {
     fontFamily: '"Avenir Next", Avenir, ui-sans-serif, system-ui, sans-serif'
   } }}>
     <main className="app-shell flash-page">
-      <header className="site-header"><div className="brand"><img src="/openpill.svg" alt="" /><span>OpenPill</span></div><a className="header-link" href="/" onClick={(event) => handleInternalLink(event, "/")}><ArrowLeftOutlined /> Your Pills</a></header>
+      <header className="site-header"><div className="brand"><img src={sitePath("openpill.svg")} alt="" /><span>OpenPill</span></div><a className="header-link" href={routeUrl("/")} onClick={(event) => handleInternalLink(event, "/")}><ArrowLeftOutlined /> Your Pills</a></header>
       <div className="flash-heading"><h1>{view === "convert" ? "Convert your RAPT Pill to OpenPill" : "Restore your Pill"}</h1><p>{view === "convert" ? "This guided process uses an ESP32 development board to connect to your Pill. We strongly recommend saving a recovery copy before installing." : "Switch back to firmware already on your Pill, or restore from a recovery copy."}</p>
         <Button type="link" className="flash-view-link" disabled={!!work} onClick={() => { setError(""); setErrorDetails(""); setMessage(""); navigate(view === "convert" ? "/restore" : "/flash"); }}>{view === "convert" ? "Restore from a recovery copy" : "Back to conversion"}</Button></div>
       {view === "convert" && <Steps className="flash-steps" current={wizardStep} responsive items={[
@@ -373,7 +374,7 @@ export default function FlashPage({ view }: { view: "convert" | "restore" }) {
           <Button type="link" className="flash-photo-link" onClick={() => setPhotoOpen(true)}>(example wiring photo)</Button></p>
         <FlashWiringDiagram />
         <Modal title="Pill programming pads" open={photoOpen} onCancel={() => setPhotoOpen(false)} footer={null} width={1100}>
-          <img className="flash-photo" src="/pill-programming-pads.webp" alt="Close-up of a RAPT Pill rev.3.1 PCB showing its programming holes labeled 3V3, EN, IO0, E_RXD, E_TXD, and GND from left to right." />
+          <img className="flash-photo" src={sitePath("pill-programming-pads.webp")} alt="Close-up of a RAPT Pill rev.3.1 PCB showing its programming holes labeled 3V3, EN, IO0, E_RXD, E_TXD, and GND from left to right." />
         </Modal>
         <details className="wire-details"><summary>Wiring details</summary><div className="wire-table" role="table" aria-label="Bridge to Pill wiring"><div role="row"><strong>ESP32 bridge</strong><strong>Pill pad</strong><strong>Purpose</strong></div>
           <div role="row"><span>GND</span><span>GND</span><span>Common ground</span></div>
@@ -403,7 +404,7 @@ export default function FlashPage({ view }: { view: "convert" | "restore" }) {
           <div><span>{backup.mac} · {new Date(backup.createdAt).toLocaleString()}</span><span className="backup-downloads"><Button size="small" onClick={() => downloadBackup(backup)} disabled={!!work}>Full copy</Button><Button size="small" onClick={() => downloadOtaSlot(backup, 0)} disabled={!!work}>Slot 0</Button><Button size="small" onClick={() => downloadOtaSlot(backup, 1)} disabled={!!work}>Slot 1</Button></span></div></div>}
         <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} disabled={(!backup && !skipBackup) || !!work}>{backup ? "I have saved the recovery copy." : "I understand I won't have a recovery copy if this installation fails."}</Checkbox>
         <FlashPowerCheck chargerConfirmed={chargingConfirmed} onChargerChange={setChargingConfirmed} disabled={(!backup && !skipBackup) || !!work} />
-        {finished && <p className="flash-detail">Done. You can now return to <a href="/" onClick={(event) => handleInternalLink(event, "/")}>Your Pills</a> and connect over BLE when the green light breathes.</p>}
+        {finished && <p className="flash-detail">Done. You can now return to <a href={routeUrl("/")} onClick={(event) => handleInternalLink(event, "/")}>Your Pills</a> and connect over BLE when the green light breathes.</p>}
         {cardFeedback("flash")}
         <div className="flash-navigation"><div className="flash-action-group">{!finished && <Button onClick={() => showStep(2)} disabled={!!work}>Back</Button>}</div>
           <div className="flash-action-group"><Button type="primary" onClick={() => void convertPill()} loading={work === "flash"} disabled={(!backup && !skipBackup) || !confirmed || !chargingConfirmed || !!work || finished}>Install OpenPill</Button></div></div>

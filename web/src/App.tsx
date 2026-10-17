@@ -6,7 +6,8 @@ import PillCard from "./PillCard";
 import pillReady from "./assets/pill-ready.svg";
 import { loadSavedPills, SavedPill, shouldImportGrantedPills, storeSavedPills } from "./savedPills";
 import { deleteReadings } from "./history";
-import { handleInternalLink } from "./navigation";
+import { handleInternalLink, routeUrl } from "./navigation";
+import { sitePath } from "./sitePath";
 import { loadUnitPreferences, storeUnitPreferences, UnitPreferences } from "./units";
 
 export default function App() {
@@ -99,7 +100,7 @@ export default function App() {
   } }}>
     <main className="app-shell">
       <header className="site-header">
-        <div className="brand"><img src="/openpill.svg" alt="" /><span>OpenPill</span></div>
+        <div className="brand"><img src={sitePath("openpill.svg")} alt="" /><span>OpenPill</span></div>
         <div className="header-actions">
           <a className="header-link" href="https://github.com/keredson/openpill" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a>
           <Button type="text" shape="circle" icon={<SettingOutlined />} aria-label="Display settings" title="Display settings" onClick={() => setDisplaySettingsOpen(true)} />
@@ -127,7 +128,7 @@ export default function App() {
 
       <section className="convert-link" aria-labelledby="convert-title">
         <div><h2 id="convert-title">Convert your RAPT Pill to OpenPill</h2><p>Use an ESP32 bridge to save a recovery copy and flash OpenPill, step by step.</p></div>
-        <a href="/flash" onClick={(event) => handleInternalLink(event, "/flash")}>Start</a>
+        <a href={routeUrl("/flash")} onClick={(event) => handleInternalLink(event, "/flash")}>Start</a>
       </section>
 
     </main>

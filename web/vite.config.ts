@@ -56,13 +56,14 @@ function serveLocalFirmware(): Plugin {
 }
 
 export default defineConfig(({ command }) => {
+  const base = command === "build" ? "/openpill/" : "/";
   if (command === "build" && existsSync(localFirmware)) {
     mkdirSync(fileURLToPath(new URL("./public/firmware/", import.meta.url)), { recursive: true });
     copyFileSync(localFirmware, stagedFirmware);
     writeFileSync(stagedManifest, JSON.stringify(firmwareManifest(readFileSync(localFirmware))));
   }
   return {
-    base: "/",
+    base,
     build: { rollupOptions: { input: ["index.html", "flash/index.html", "restore/index.html"] } },
     plugins: [
       react(),
@@ -80,7 +81,8 @@ export default defineConfig(({ command }) => {
           theme_color: "#234b3f",
           background_color: "#f8f6f0",
           display: "standalone",
-          start_url: "/",
+          start_url: base,
+          scope: base,
           icons: [
             {
               src: "openpill.svg",

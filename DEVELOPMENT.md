@@ -175,7 +175,8 @@ verifies the image on the Pill, and keeps the previous slot if interrupted.
 It requires Web Bluetooth support and the OTA service permission; a previously
 saved Pill may need to be selected again through Add a Pill to grant that
 permission. Keep the page open during transfer. The firmware image must be
-published at `/firmware/openpill.bin` on the same origin; GitHub release checks
+published at `/openpill/firmware/openpill.bin` on GitHub Pages (or
+`/firmware/openpill.bin` on localhost); GitHub release checks
 are informational and do not automatically substitute a release download.
 
 Before using `/flash` locally, stage the ESP32 bridge firmware packages once:
@@ -213,9 +214,10 @@ missing characteristic points to an older Bluetooth service list cached by the
 browser or operating system. Restart Bluetooth and the browser before retrying.
 
 Build the production PWA with `yarn build`; output is in `web/dist/`. The
-GitHub Pages workflow deploys that directory from `main`. It assumes a custom
-domain served from `/`, so configure the custom domain and DNS in GitHub Pages
-settings. The PWA's shell is available offline after an initial successful
+GitHub Pages workflow deploys that directory from `main` to
+`https://keredson.github.io/openpill/`. In the repository's Pages settings,
+select **GitHub Actions** as the publishing source. The PWA's shell is available
+offline after an initial successful
 load, while BLE still requires a nearby Pill with an open maintenance window.
 
 Optional automatic Wi-Fi firmware updates use the image and SHA-256 manifest at

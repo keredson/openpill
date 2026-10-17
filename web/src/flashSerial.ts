@@ -1,3 +1,5 @@
+import { sitePath } from "./sitePath";
+
 const FLASH_SIZE = 0x400000;
 export const PILL_APP_ADDRESS = 0x10000;
 export const PILL_APP_SLOT_SIZE = 0x180000;
@@ -47,12 +49,12 @@ interface EspToolModule {
 }
 
 async function esptool(): Promise<EspToolModule> {
-  const url = new URL("/vendor/esptool-js-0.7.0.js", location.origin).href;
+  const url = new URL(sitePath("vendor/esptool-js-0.7.0.js"), location.origin).href;
   return await import(/* @vite-ignore */ url) as EspToolModule;
 }
 
 export async function chooseSerialPort(): Promise<BrowserSerialPort> {
-  if (!navigator.serial) throw new Error("Use a desktop Chromium browser with Web Serial and HTTPS (or localhost).");
+  if (!navigator.serial) throw new Error("Use a desktop browser with Web Serial over HTTPS (or localhost).");
   try {
     return await navigator.serial.requestPort();
   } catch (error) {
@@ -70,7 +72,7 @@ export class BridgeNotResponding extends Error {
 }
 
 async function asset(path: string): Promise<Uint8Array> {
-  const response = await fetch(`/firmware/${path}`, { cache: "no-store" });
+  const response = await fetch(sitePath(`firmware/${path}`), { cache: "no-store" });
   if (!response.ok) throw new Error(`Firmware package ${path} is unavailable on this site.`);
   const image = new Uint8Array(await response.arrayBuffer());
   if (path === "openpill.bin") {
