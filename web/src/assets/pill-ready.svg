@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 440" role="img" aria-label="Pill hydrometer standing with its orange cap up and the green status light breathing at the bottom of the circuit board">
+  <defs>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#e97700"/>
+      <stop offset=".16" stop-color="#ff9906"/>
+      <stop offset=".54" stop-color="#ff8b00"/>
+      <stop offset=".84" stop-color="#f87c00"/>
+      <stop offset="1" stop-color="#dd6900"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#144d3a"/>
+      <stop offset=".25" stop-color="#1e7659"/>
+      <stop offset=".65" stop-color="#155540"/>
+      <stop offset="1" stop-color="#0f4436"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#fff" stop-opacity=".36"/>
+      <stop offset=".12" stop-color="#e8f0e9" stop-opacity=".18"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".04"/>
+      <stop offset=".88" stop-color="#fff" stop-opacity=".27"/>
+      <stop offset="1" stop-color="#d8e1da" stop-opacity=".51"/>
+    </linearGradient>
+    <filter id="led-blur" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="6"/></filter>
+    <clipPath id="shell"><path d="M61 204h118v149c0 41-21 67-59 67s-59-26-59-67z"/></clipPath>
+    <style>
+      .led-halo { animation: led-breathe 2.8s ease-in-out infinite; }
+      .led-core { animation: led-core-breathe 2.8s ease-in-out infinite; }
+      @keyframes led-breathe { 0%, 100% { opacity: .06; } 50% { opacity: .75; } }
+      @keyframes led-core-breathe { 0%, 100% { opacity: .23; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .led-halo, .led-core { animation: none; opacity: .85; } }
+    </style>
+  </defs>
+
+  <!-- Clear housing. The front-facing circuit board fills most of its width. -->
+  <path d="M61 204h118v149c0 41-21 67-59 67s-59-26-59-67z" fill="#eaf0e8" stroke="#d3ddd5" stroke-width="2"/>
+  <g clip-path="url(#shell)">
+    <path d="M74 207h92v174c0 16-11 27-26 27h-40c-15 0-26-11-26-27z" fill="url(#board)"/>
+    <path d="M79 213v77h82v-77" fill="none" stroke="#c3ab68" stroke-width="2.4" opacity=".83"/>
+    <path d="M85 215v67m70-67v67M92 289h56" fill="none" stroke="#dfc680" stroke-width=".8" opacity=".65"/>
+    <rect x="103" y="211" width="34" height="42" rx="2" fill="#153229"/>
+    <rect x="107" y="215" width="26" height="26" rx="1" fill="#1b312a"/>
+    <path d="M109 245h22" stroke="#d2d8c4" stroke-width="3"/>
+    <rect x="108" y="258" width="19" height="11" rx="1" fill="#1b2b25"/>
+    <rect x="132" y="262" width="11" height="9" rx="1" fill="#263b2c"/>
+    <rect x="111" y="275" width="18" height="9" rx="1" fill="#263a30"/>
+    <path d="M100 260h5m-5 5h5m23 10h7m-35 3h6m-8 8h10m24-2h5" stroke="#c3d0bd" stroke-width="1.5" opacity=".8"/>
+    <path d="M94 309v74m5-72v63m7-66v70m29-72v69" fill="none" stroke="#83b49a" stroke-width=".9" opacity=".65"/>
+    <path d="M94 311h17m-11 39h19m-13 26h25" fill="none" stroke="#c5ae6c" stroke-width="1.1" opacity=".72"/>
+    <rect x="112" y="350" width="14" height="13" rx="1" fill="#31483c"/>
+    <rect x="115" y="354" width="8" height="5" rx="1" fill="#c1baa0"/>
+    <rect x="146" y="309" width="12" height="70" rx="1" fill="none" stroke="#b6c9b8" stroke-width="1.4"/>
+    <g fill="#c1ad73">
+      <circle cx="152" cy="317" r="2.1"/><circle cx="152" cy="330" r="2.1"/>
+      <circle cx="152" cy="343" r="2.1"/><circle cx="152" cy="356" r="2.1"/>
+      <circle cx="152" cy="369" r="2.1"/>
+    </g>
+    <path d="M87 388h65" stroke="#bfcfbc" stroke-width="1" opacity=".7"/>
+    <rect x="110" y="397" width="22" height="8" rx="3" fill="#b6c5b7" opacity=".85"/>
+
+    <!-- The status LED is at the bottom of the board, not halfway up it. -->
+    <circle class="led-halo" cx="120" cy="400" r="21" fill="#5af18e" filter="url(#led-blur)"/>
+    <circle class="led-core" cx="120" cy="400" r="4.5" fill="#56ef87" stroke="#d9ffe4" stroke-width="1"/>
+
+    <path d="M61 204h118v149c0 41-21 67-59 67s-59-26-59-67z" fill="url(#glass)"/>
+    <path d="M69 213v141c0 26 6 43 18 52" fill="none" stroke="#fff" stroke-width="5" opacity=".46" stroke-linecap="round"/>
+    <path d="M171 214v142c0 25-7 42-19 50" fill="none" stroke="#fff" stroke-width="3" opacity=".45" stroke-linecap="round"/>
+  </g>
+
+  <!-- Rounded opaque orange cap and the seam above the clear shell. -->
+  <path d="M61 205V59c0-26 18-43 43-43h32c25 0 43 17 43 43v146z" fill="url(#orange)" stroke="#e77b00" stroke-width="2"/>
+  <path d="M81 195V62c0-21 11-32 31-34" fill="none" stroke="#ffc065" stroke-width="4" opacity=".7" stroke-linecap="round"/>
+  <path d="M166 59v136" fill="none" stroke="#db6800" stroke-width="3" opacity=".25" stroke-linecap="round"/>
+  <path d="M62 204h116" stroke="#a65d19" stroke-width="4" opacity=".65"/>
+  <path d="M65 209h110" stroke="#fff" stroke-width="1.5" opacity=".66"/>
+</svg>

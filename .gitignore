@@ -1,0 +1,11 @@
+.pio/
+sdkconfig.*
+ignore/
+agents.md
+web/node_modules/
+web/dist/
+web/.yarn/
+web/.pnp.*
+bridge/.pio/
+bridge/sdkconfig.*
+web/public/firmware/

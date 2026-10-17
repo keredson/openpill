@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 1000 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wiring-title wiring-description">
+<title id="wiring-title">RAPT Pill to ESP32 bridge wiring</title>
+<desc id="wiring-description">Connect Pill EN to GPIO25, IO0 to GPIO26, E_RXD to GPIO17 TX, E_TXD to GPIO16 RX, and GND to GND. Do not connect 3V3.</desc>
+<rect x="85" y="18" width="830" height="230" rx="24" fill="#176257" stroke="#0c453d" stroke-width="4">
+</rect>
+<path d="M99 39 H901 M99 234 H901" stroke="#b99553" stroke-width="5" opacity=".65">
+</path>
+<circle cx="152" cy="88" r="27" fill="#f8f6f0" stroke="#b99553" stroke-width="6">
+</circle>
+<circle cx="145" cy="165" r="9" fill="#e94f59">
+</circle>
+<text x="205" y="69" fill="#fff9e9" font-size="26" font-weight="700">PILL rev. 3.1</text>
+<text x="205" y="98" fill="#d6ece4" font-size="16">Programming pads — same order as the photo</text>
+<rect x="141" y="187" width="678" height="45" rx="9" fill="none" stroke="#cee3d7" stroke-width="2" opacity=".7">
+</rect>
+<g>
+<text x="180" y="181" transform="rotate(90 180 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">3V3</text>
+<circle cx="180" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="180" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<g>
+<text x="300" y="181" transform="rotate(90 300 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">EN</text>
+<circle cx="300" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="300" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<g>
+<text x="420" y="181" transform="rotate(90 420 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">IO0</text>
+<circle cx="420" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="420" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<g>
+<text x="540" y="181" transform="rotate(90 540 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">E_RXD</text>
+<circle cx="540" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="540" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<g>
+<text x="660" y="181" transform="rotate(90 660 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">E_TXD</text>
+<circle cx="660" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="660" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<g>
+<text x="780" y="181" transform="rotate(90 780 181)" text-anchor="end" fill="#fff9e9" font-size="17" font-weight="700">GND</text>
+<circle cx="780" cy="210" r="16" fill="#d5ad68" stroke="#f7d993" stroke-width="2">
+</circle>
+<circle cx="780" cy="210" r="8" fill="#0d4d43">
+</circle>
+</g>
+<text x="180" y="280" text-anchor="middle" fill="#a34438" font-size="15" font-weight="700">Do not connect 3V3</text>
+<path d="M180 226 V252" stroke="#a34438" stroke-width="3" stroke-dasharray="5 5">
+</path>
+<g>
+<path d="M300 226 V298 H220 V604 H385" fill="none" stroke="#203b39" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+</path>
+<path d="M300 226 V298 H220 V604 H385" fill="none" stroke="#d78a43" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+</path>
+</g>
+<g>
+<path d="M420 226 V315 H245 V630 H385" fill="none" stroke="#203b39" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+</path>
+<path d="M420 226 V315 H245 V630 H385" fill="none" stroke="#d2ae38" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+</path>
+</g>
+<g>
+<path d="M540 226 V331 H760 V630 H615" fill="none" stroke="#203b39" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+</path>
+<path d="M540 226 V331 H760 V630 H615" fill="none" stroke="#3d9f9c" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+</path>
+</g>
+<g>
+<path d="M660 226 V280 H780 V656 H615" fill="none" stroke="#203b39" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+</path>
+<path d="M660 226 V280 H780 V656 H615" fill="none" stroke="#4b83bf" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+</path>
+</g>
+<g>
+<path d="M780 226 V265 H820 V760 H615" fill="none" stroke="#203b39" stroke-width="12" stroke-linejoin="round" stroke-linecap="round">
+</path>
+<path d="M780 226 V265 H820 V760 H615" fill="none" stroke="#74718b" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+</path>
+</g>
+<rect x="395" y="386" width="210" height="474" rx="17" fill="#232b2d" stroke="#111819" stroke-width="4">
+</rect>
+<circle cx="414" cy="405" r="8" fill="#f8f6f0">
+</circle>
+<circle cx="586" cy="405" r="8" fill="#f8f6f0">
+</circle>
+<circle cx="414" cy="840" r="8" fill="#f8f6f0">
+</circle>
+<circle cx="586" cy="840" r="8" fill="#f8f6f0">
+</circle>
+<rect x="419" y="423" width="162" height="249" rx="7" fill="#98a7a7" stroke="#687d7e" stroke-width="3">
+</rect>
+<path d="M438 442 H562 V453 H449 V464 H562 V475 H438" fill="none" stroke="#44595b" stroke-width="4">
+</path>
+<rect x="460" y="563" width="106" height="83" rx="5" fill="#323c41">
+</rect>
+<text x="513" y="597" text-anchor="middle" fill="#f1f5f2" font-size="18" font-weight="700">ESP32</text>
+<text x="513" y="621" text-anchor="middle" fill="#d4dedb" font-size="12">module</text>
+<rect x="447" y="690" width="106" height="77" rx="5" fill="#30383a" stroke="#536161" stroke-width="2">
+</rect>
+<rect x="469" y="786" width="62" height="43" rx="5" fill="#aab6b8" stroke="#596b70" stroke-width="3">
+</rect>
+<rect x="480" y="801" width="40" height="23" rx="3" fill="#465b62">
+</rect>
+<text x="500" y="881" text-anchor="middle" fill="#263c36" font-size="18" font-weight="700">ESP32 dev board</text>
+<g>
+<rect x="380" y="412" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="422" r="5" fill="#57646a">
+</circle>
+<text x="367" y="427" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">EN</text>
+</g>
+<g>
+<rect x="380" y="438" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="448" r="5" fill="#57646a">
+</circle>
+<text x="367" y="453" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">VP</text>
+</g>
+<g>
+<rect x="380" y="464" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="474" r="5" fill="#57646a">
+</circle>
+<text x="367" y="479" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">VN</text>
+</g>
+<g>
+<rect x="380" y="490" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="500" r="5" fill="#57646a">
+</circle>
+<text x="367" y="505" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">34</text>
+</g>
+<g>
+<rect x="380" y="516" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="526" r="5" fill="#57646a">
+</circle>
+<text x="367" y="531" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">35</text>
+</g>
+<g>
+<rect x="380" y="542" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="552" r="5" fill="#57646a">
+</circle>
+<text x="367" y="557" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">32</text>
+</g>
+<g>
+<rect x="380" y="568" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="578" r="5" fill="#57646a">
+</circle>
+<text x="367" y="583" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">33</text>
+</g>
+<g>
+<rect x="380" y="594" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="604" r="5" fill="#d78a43">
+</circle>
+<rect x="292" y="593" width="79" height="22" rx="4" fill="#f8f6f0">
+</rect>
+<text x="367" y="609" text-anchor="end" fill="#d78a43" font-size="14" font-weight="700">GPIO25</text>
+</g>
+<g>
+<rect x="380" y="620" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="630" r="5" fill="#d2ae38">
+</circle>
+<rect x="292" y="619" width="79" height="22" rx="4" fill="#f8f6f0">
+</rect>
+<text x="367" y="635" text-anchor="end" fill="#d2ae38" font-size="14" font-weight="700">GPIO26</text>
+</g>
+<g>
+<rect x="380" y="646" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="656" r="5" fill="#57646a">
+</circle>
+<text x="367" y="661" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">27</text>
+</g>
+<g>
+<rect x="380" y="672" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="682" r="5" fill="#57646a">
+</circle>
+<text x="367" y="687" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">14</text>
+</g>
+<g>
+<rect x="380" y="698" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="708" r="5" fill="#57646a">
+</circle>
+<text x="367" y="713" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">12</text>
+</g>
+<g>
+<rect x="380" y="724" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="734" r="5" fill="#57646a">
+</circle>
+<text x="367" y="739" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">13</text>
+</g>
+<g>
+<rect x="380" y="750" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="760" r="5" fill="#57646a">
+</circle>
+<text x="367" y="765" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">GND</text>
+</g>
+<g>
+<rect x="380" y="776" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="385" cy="786" r="5" fill="#57646a">
+</circle>
+<text x="367" y="791" text-anchor="end" fill="#52645e" font-size="14" font-weight="500">VIN</text>
+</g>
+<g>
+<rect x="590" y="412" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="422" r="5" fill="#57646a">
+</circle>
+<text x="633" y="427" fill="#52645e" font-size="14" font-weight="500">23</text>
+</g>
+<g>
+<rect x="590" y="438" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="448" r="5" fill="#57646a">
+</circle>
+<text x="633" y="453" fill="#52645e" font-size="14" font-weight="500">22</text>
+</g>
+<g>
+<rect x="590" y="464" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="474" r="5" fill="#57646a">
+</circle>
+<text x="633" y="479" fill="#52645e" font-size="14" font-weight="500">TX0</text>
+</g>
+<g>
+<rect x="590" y="490" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="500" r="5" fill="#57646a">
+</circle>
+<text x="633" y="505" fill="#52645e" font-size="14" font-weight="500">RX0</text>
+</g>
+<g>
+<rect x="590" y="516" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="526" r="5" fill="#57646a">
+</circle>
+<text x="633" y="531" fill="#52645e" font-size="14" font-weight="500">21</text>
+</g>
+<g>
+<rect x="590" y="542" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="552" r="5" fill="#57646a">
+</circle>
+<text x="633" y="557" fill="#52645e" font-size="14" font-weight="500">19</text>
+</g>
+<g>
+<rect x="590" y="568" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="578" r="5" fill="#57646a">
+</circle>
+<text x="633" y="583" fill="#52645e" font-size="14" font-weight="500">18</text>
+</g>
+<g>
+<rect x="590" y="594" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="604" r="5" fill="#57646a">
+</circle>
+<text x="633" y="609" fill="#52645e" font-size="14" font-weight="500">5</text>
+</g>
+<g>
+<rect x="590" y="620" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="630" r="5" fill="#3d9f9c">
+</circle>
+<rect x="629" y="619" width="111" height="22" rx="4" fill="#f8f6f0">
+</rect>
+<text x="633" y="635" fill="#3d9f9c" font-size="14" font-weight="700">GPIO17 (TX)</text>
+</g>
+<g>
+<rect x="590" y="646" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="656" r="5" fill="#4b83bf">
+</circle>
+<rect x="629" y="645" width="111" height="22" rx="4" fill="#f8f6f0">
+</rect>
+<text x="633" y="661" fill="#4b83bf" font-size="14" font-weight="700">GPIO16 (RX)</text>
+</g>
+<g>
+<rect x="590" y="672" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="682" r="5" fill="#57646a">
+</circle>
+<text x="633" y="687" fill="#52645e" font-size="14" font-weight="500">4</text>
+</g>
+<g>
+<rect x="590" y="698" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="708" r="5" fill="#57646a">
+</circle>
+<text x="633" y="713" fill="#52645e" font-size="14" font-weight="500">2</text>
+</g>
+<g>
+<rect x="590" y="724" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="734" r="5" fill="#57646a">
+</circle>
+<text x="633" y="739" fill="#52645e" font-size="14" font-weight="500">15</text>
+</g>
+<g>
+<rect x="590" y="750" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="760" r="5" fill="#74718b">
+</circle>
+<rect x="629" y="749" width="91" height="22" rx="4" fill="#f8f6f0">
+</rect>
+<text x="633" y="765" fill="#74718b" font-size="14" font-weight="700">GND</text>
+</g>
+<g>
+<rect x="590" y="776" width="30" height="20" rx="3" fill="#30383a" stroke="#9da9a9" stroke-width="2">
+</rect>
+<circle cx="615" cy="786" r="5" fill="#57646a">
+</circle>
+<text x="633" y="791" fill="#52645e" font-size="14" font-weight="500">3V3</text>
+</g>
+</svg>
