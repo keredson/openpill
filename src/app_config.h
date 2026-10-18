@@ -16,11 +16,13 @@ typedef struct {
     uint32_t wifi_timeout_s;
     bool ble_telemetry;
     bool wifi_telemetry;
+    bool history_telemetry;
     bool auto_wifi_update;
     bool allow_http;
     char wifi_ssid[APP_CONFIG_SSID_MAX + 1];
     char wifi_password[APP_CONFIG_PASSWORD_MAX + 1];
     char endpoint_url[APP_CONFIG_URL_MAX + 1];
+    char history_read_hash[65];
 } app_config_t;
 
 esp_err_t app_config_init(void);

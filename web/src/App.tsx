@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, ConfigProvider, Modal, Segmented } from "antd";
+import { Alert, Button, Card, ConfigProvider, Input, Modal, Segmented } from "antd";
 import { PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { choosePill } from "./ble";
 import PillCard from "./PillCard";
@@ -9,6 +9,7 @@ import { deleteReadings } from "./history";
 import { handleInternalLink, routeUrl } from "./navigation";
 import { sitePath } from "./sitePath";
 import { loadUnitPreferences, storeUnitPreferences, UnitPreferences } from "./units";
+import { forgetReadKey, saveReadKey } from "./historyKeys";
 
 export default function App() {
   const [pills, setPills] = useState<SavedPill[]>(loadSavedPills);
@@ -18,6 +19,10 @@ export default function App() {
   const [choosing, setChoosing] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importValue, setImportValue] = useState("");
+  const [importError, setImportError] = useState("");
+  const [historyKeyRevision, setHistoryKeyRevision] = useState(0);
   const [units, setUnits] = useState<UnitPreferences>(loadUnitPreferences);
   const [error, setError] = useState("");
 
@@ -55,8 +60,27 @@ export default function App() {
   }
 
   function forgetPill(id: string) {
+    const removed = pills.find((pill) => pill.id === id);
     setPills((current) => current.filter((item) => item.id !== id));
     void deleteReadings(id).catch(() => {});
+    if (removed?.historyId && !pills.some((pill) => pill.id !== id && pill.historyId === removed.historyId))
+      forgetReadKey(removed.historyId);
+  }
+
+  function importHistory() {
+    const match = /^([0-9a-f]{64}):([A-Za-z0-9_-]{43})$/.exec(importValue.trim());
+    if (!match) { setImportError("Paste a history key copied from the first phone."); return; }
+    try {
+      saveReadKey(match[1], match[2]);
+      setHistoryKeyRevision((current) => current + 1);
+      const existing = pills.find((pill) => pill.historyId === match[1] || pill.config?.history_id === match[1]);
+      if (!existing) rememberPill({ id: `history:${match[1]}`, historyId: match[1], name: "OpenPill history" });
+      setImportValue("");
+      setImportError("");
+      setImportOpen(false);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Invalid history key.");
+    }
   }
 
   async function addPill() {
@@ -109,12 +133,17 @@ export default function App() {
 
       {pills.length > 0 && <section className="pill-section" aria-labelledby="pills-title">
         <div className="section-heading"><div><h1 id="pills-title">Your Pills</h1><p>Readings and controls for the Pills you’ve added.</p></div>
-          <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { setError(""); setGuideOpen(true); }}>Add a Pill</Button>
+          <span><Button onClick={() => setImportOpen(true)}>Import history key</Button> <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { setError(""); setGuideOpen(true); }}>Add a Pill</Button></span>
         </div>
-        <div className="pill-grid">{pills.map((pill) => <PillCard key={pill.id} pill={pill} device={devices.get(pill.id)} autoConnect={autoConnectId === pill.id} units={units} onRemember={rememberPill} onForget={() => forgetPill(pill.id)} onChoose={() => { setError(""); setGuideOpen(true); }} />)}</div>
+        <div className="pill-grid">{pills.map((pill) => <PillCard key={pill.id} pill={pill} device={devices.get(pill.id)} autoConnect={autoConnectId === pill.id} units={units} historyKeyRevision={historyKeyRevision} onRemember={rememberPill} onForget={() => forgetPill(pill.id)} onChoose={() => { setError(""); setGuideOpen(true); }} />)}</div>
       </section>}
 
-      {pills.length === 0 && <Card className="connect-guide">{connectionGuide}</Card>}
+      {pills.length === 0 && <><Card className="connect-guide">{connectionGuide}</Card><Button onClick={() => setImportOpen(true)}>Import history key</Button></>}
+      <Modal title="Import OpenPill history" open={importOpen} onCancel={() => setImportOpen(false)} onOk={importHistory} okText="Import">
+        <p>Paste the history key copied from the first phone. It grants access to stored readings.</p>
+        <Input.Password value={importValue} onChange={(event) => { setImportValue(event.target.value); setImportError(""); }} placeholder="History ID:read key" autoComplete="off" />
+        {importError && <Alert type="error" showIcon message={importError} />}
+      </Modal>
       <Modal className="connect-modal" open={pills.length > 0 && guideOpen} onCancel={() => setGuideOpen(false)} footer={null} width={900} aria-label="How to connect a Pill">
         {connectionGuide}
       </Modal>

@@ -8,6 +8,7 @@ export interface SavedPill {
   firmwareVersion?: string;
   sample?: HardwareSample;
   config?: PublicConfig;
+  historyId?: string;
   readAt?: number;
 }
 

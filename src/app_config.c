@@ -9,6 +9,7 @@
 #include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "history_identity.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -33,6 +34,16 @@ static bool valid_text(const char *value, size_t maximum)
     return value != NULL && strnlen(value, maximum + 1) <= maximum;
 }
 
+static bool valid_hash(const char *value)
+{
+    for (size_t i = 0; i < 64; ++i) {
+        char digit = value[i];
+        if (!((digit >= '0' && digit <= '9') ||
+              (digit >= 'a' && digit <= 'f'))) return false;
+    }
+    return value[64] == '\0';
+}
+
 static esp_err_t validate(const app_config_t *config, char *message, size_t size)
 {
     const char *error = NULL;
@@ -48,6 +59,15 @@ static esp_err_t validate(const app_config_t *config, char *message, size_t size
         error = "configuration text is too long";
     } else if (config->wifi_telemetry && config->wifi_ssid[0] == '\0') {
         error = "Wi-Fi telemetry requires an SSID";
+    } else if (config->history_telemetry && config->wifi_ssid[0] == '\0') {
+        error = "History reporting requires an SSID";
+    } else if (config->history_telemetry && config->wifi_telemetry) {
+        error = "Choose one Wi-Fi destination";
+    } else if (config->history_telemetry && config->wake_interval_s < 900) {
+        error = "History reporting requires a 15-minute interval";
+    } else if (config->history_telemetry &&
+               !valid_hash(config->history_read_hash)) {
+        error = "History read key is missing";
     } else if (config->wifi_telemetry && config->endpoint_url[0] == '\0') {
         error = "Wi-Fi telemetry requires an endpoint URL";
     } else if (config->endpoint_url[0] != '\0' &&
@@ -161,6 +181,7 @@ esp_err_t app_config_init(void)
     get_u32(handle, "wifi_timeout_s", &active_config.wifi_timeout_s);
     get_bool(handle, "ble_telem", &active_config.ble_telemetry);
     get_bool(handle, "wifi_telem", &active_config.wifi_telemetry);
+    get_bool(handle, "hist_telem", &active_config.history_telemetry);
     get_bool(handle, "auto_update", &active_config.auto_wifi_update);
     get_bool(handle, "allow_http", &active_config.allow_http);
     get_string(handle, "wifi_ssid", active_config.wifi_ssid,
@@ -169,6 +190,8 @@ esp_err_t app_config_init(void)
                sizeof(active_config.wifi_password));
     get_string(handle, "endpoint_url", active_config.endpoint_url,
                sizeof(active_config.endpoint_url));
+    get_string(handle, "hist_hash", active_config.history_read_hash,
+               sizeof(active_config.history_read_hash));
     nvs_close(handle);
 
     /* Retire credentials stored by firmware versions with Bearer auth. */
@@ -270,6 +293,7 @@ esp_err_t app_config_stage_json(const char *json, app_config_t *output,
     APPLY_JSON(json_u32(root, "wifi_timeout_s", &output->wifi_timeout_s));
     APPLY_JSON(json_bool(root, "ble_telemetry", &output->ble_telemetry));
     APPLY_JSON(json_bool(root, "wifi_telemetry", &output->wifi_telemetry));
+    APPLY_JSON(json_bool(root, "history_telemetry", &output->history_telemetry));
     APPLY_JSON(json_bool(root, "auto_wifi_update", &output->auto_wifi_update));
     APPLY_JSON(json_bool(root, "allow_http", &output->allow_http));
     APPLY_JSON(json_string(root, "wifi_ssid", output->wifi_ssid,
@@ -278,6 +302,8 @@ esp_err_t app_config_stage_json(const char *json, app_config_t *output,
                            sizeof(output->wifi_password)));
     APPLY_JSON(json_string(root, "endpoint_url", output->endpoint_url,
                            sizeof(output->endpoint_url)));
+    APPLY_JSON(json_string(root, "history_read_hash", output->history_read_hash,
+                           sizeof(output->history_read_hash)));
 #undef APPLY_JSON
     cJSON_Delete(root);
     if (error != ESP_OK) {
@@ -308,11 +334,13 @@ esp_err_t app_config_commit(const app_config_t *config)
     SET_VALUE(nvs_set_u32(handle, "wifi_timeout_s", config->wifi_timeout_s));
     SET_VALUE(nvs_set_u8(handle, "ble_telem", config->ble_telemetry));
     SET_VALUE(nvs_set_u8(handle, "wifi_telem", config->wifi_telemetry));
+    SET_VALUE(nvs_set_u8(handle, "hist_telem", config->history_telemetry));
     SET_VALUE(nvs_set_u8(handle, "auto_update", config->auto_wifi_update));
     SET_VALUE(nvs_set_u8(handle, "allow_http", config->allow_http));
     SET_VALUE(nvs_set_str(handle, "wifi_ssid", config->wifi_ssid));
     SET_VALUE(nvs_set_str(handle, "wifi_password", config->wifi_password));
     SET_VALUE(nvs_set_str(handle, "endpoint_url", config->endpoint_url));
+    SET_VALUE(nvs_set_str(handle, "hist_hash", config->history_read_hash));
     SET_VALUE(nvs_commit(handle));
 #undef SET_VALUE
     nvs_close(handle);
@@ -357,11 +385,18 @@ esp_err_t app_config_public_json(char *output, size_t output_size)
     cJSON_AddNumberToObject(root, "wifi_timeout_s", config.wifi_timeout_s);
     cJSON_AddBoolToObject(root, "ble_telemetry", config.ble_telemetry);
     cJSON_AddBoolToObject(root, "wifi_telemetry", config.wifi_telemetry);
+    cJSON_AddBoolToObject(root, "history_telemetry", config.history_telemetry);
     cJSON_AddBoolToObject(root, "auto_wifi_update", config.auto_wifi_update);
     cJSON_AddBoolToObject(root, "allow_http", config.allow_http);
     cJSON_AddStringToObject(root, "wifi_ssid", config.wifi_ssid);
     cJSON_AddBoolToObject(root, "has_wifi_password", config.wifi_password[0] != '\0');
     cJSON_AddStringToObject(root, "endpoint_url", config.endpoint_url);
+    cJSON_AddBoolToObject(root, "has_history_read_hash",
+                          valid_hash(config.history_read_hash));
+    char history_id[65];
+    if (history_identity_id(history_id) == ESP_OK) {
+        cJSON_AddStringToObject(root, "history_id", history_id);
+    }
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (json == NULL) {

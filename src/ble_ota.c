@@ -20,6 +20,7 @@
 #include "host/ble_uuid.h"
 #include "host/util/util.h"
 #include "hardware.h"
+#include "history_identity.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/platform_util.h"
 #include "nimble/nimble_port.h"
@@ -51,6 +52,7 @@
 #define CONFIG_COMMAND_DISCARD 0x02
 #define CONFIG_COMMAND_WIFI 0x03
 #define CONFIG_COMMAND_TEST 0x04
+#define CONFIG_COMMAND_RESET_HISTORY 0x05
 #define CONFIG_DOCUMENT_MAX 1024
 
 #define BLE_DONE_BIT BIT0
@@ -619,7 +621,8 @@ static void apply_config_task(void *unused)
     esp_err_t error = ESP_OK;
     if (config_action == CONFIG_COMMAND_WIFI) {
         error = wifi_report_test_connection(&staged_config, message, sizeof(message));
-    } else if (config_action == CONFIG_COMMAND_TEST || staged_config.wifi_telemetry) {
+    } else if (config_action == CONFIG_COMMAND_TEST || staged_config.wifi_telemetry ||
+               staged_config.history_telemetry) {
         error = wifi_report_send(&staged_config, &sample, message, sizeof(message));
     }
     if (error == ESP_OK) {
@@ -651,6 +654,21 @@ static void apply_config_task(void *unused)
     vTaskDelete(NULL);
 }
 
+static void reset_history_task(void *unused)
+{
+    (void)unused;
+    app_config_t config;
+    app_config_get(&config);
+    config.history_telemetry = false;
+    config.history_read_hash[0] = '\0';
+    esp_err_t error = app_config_commit(&config);
+    if (error == ESP_OK) error = history_identity_reset();
+    set_config_status(error == ESP_OK ? CONFIG_STATE_SAVED : CONFIG_STATE_ERROR,
+                      error == ESP_OK ? "New history identity ready" :
+                                        "Could not reset history identity");
+    vTaskDelete(NULL);
+}
+
 static int config_command_packet(uint8_t command)
 {
     touch_activity();
@@ -661,6 +679,16 @@ static int config_command_packet(uint8_t command)
         staged_config_valid = false;
         config_document_length = 0;
         set_config_status(CONFIG_STATE_IDLE, "Staged configuration discarded");
+        return 0;
+    }
+    if (command == CONFIG_COMMAND_RESET_HISTORY) {
+        if (config_state == CONFIG_STATE_TESTING) return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+        staged_config_valid = false;
+        set_config_status(CONFIG_STATE_TESTING, "Resetting history identity");
+        if (xTaskCreate(reset_history_task, "history_reset", 4096, NULL, 5, NULL) != pdPASS) {
+            set_config_status(CONFIG_STATE_ERROR, "Could not start history reset");
+            return BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
         return 0;
     }
     if (command != CONFIG_COMMAND_APPLY && command != CONFIG_COMMAND_WIFI &&
@@ -678,9 +706,12 @@ static int config_command_packet(uint8_t command)
             staged_config.wifi_timeout_s != current.wifi_timeout_s ||
             staged_config.ble_telemetry != current.ble_telemetry ||
             staged_config.wifi_telemetry != current.wifi_telemetry ||
+            staged_config.history_telemetry != current.history_telemetry ||
             staged_config.auto_wifi_update != current.auto_wifi_update ||
             staged_config.allow_http != current.allow_http ||
-            strcmp(staged_config.endpoint_url, current.endpoint_url) != 0) {
+            strcmp(staged_config.endpoint_url, current.endpoint_url) != 0 ||
+            strcmp(staged_config.history_read_hash,
+                   current.history_read_hash) != 0) {
             set_config_status(CONFIG_STATE_ERROR, "Wi-Fi setup can only change the network");
             return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
         }
@@ -689,7 +720,8 @@ static int config_command_packet(uint8_t command)
     set_config_status(CONFIG_STATE_TESTING,
                       command == CONFIG_COMMAND_WIFI ? "Connecting to Wi-Fi"
                       : command == CONFIG_COMMAND_TEST ? "Sending test POST"
-                      : staged_config.wifi_telemetry ? "Testing Wi-Fi and endpoint"
+                      : staged_config.wifi_telemetry || staged_config.history_telemetry
+                        ? "Testing Wi-Fi and endpoint"
                                                    : "Saving configuration");
     if (xTaskCreate(apply_config_task, "config_apply", 8192, NULL, 5, NULL) != pdPASS) {
         set_config_status(CONFIG_STATE_ERROR, "Could not start configuration test");
@@ -708,6 +740,7 @@ static int config_command_access(uint16_t conn_handle, uint16_t attr_handle,
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     uint8_t command;
     if (ble_hs_mbuf_to_flat(ctxt->om, &command, 1, NULL) != 0) return BLE_ATT_ERR_UNLIKELY;
+    if (command == CONFIG_COMMAND_RESET_HISTORY) return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     return config_command_packet(command);
 }
 

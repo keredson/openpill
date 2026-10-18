@@ -6,9 +6,10 @@ import { checkLatestRelease, ReleaseCheck } from "./releases";
 import SettingsModal from "./SettingsModal";
 import FirmwareUpdateModal from "./FirmwareUpdateModal";
 import type { SavedPill } from "./savedPills";
-import { fromBroadcast, fromHardware, HistoricalReading, loadReadings, saveReading } from "./history";
+import { fromBroadcast, fromHardware, HistoricalReading, loadReadings, saveReading, syncServerHistory } from "./history";
 import PillHistory, { HistoryPeriod } from "./PillHistory";
 import { batteryPercentFromMv } from "./battery";
+import { generateReadKey, hashReadKey, loadReadKey, saveReadKey } from "./historyKeys";
 import { formatGravity, formatTemperature, UnitPreferences } from "./units";
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
@@ -34,11 +35,12 @@ function siteFirmwareState(config: Pick<PublicConfig, "firmware_version" | "firm
   return { version: image.version, state: config.firmware_elf_sha256 ? "different" : "unknown" };
 }
 
-export default function PillCard({ pill, device, autoConnect, units, onRemember, onForget, onChoose }: {
+export default function PillCard({ pill, device, autoConnect, units, historyKeyRevision, onRemember, onForget, onChoose }: {
   pill: SavedPill;
   device?: BluetoothDevice;
   autoConnect: boolean;
   units: UnitPreferences;
+  historyKeyRevision: number;
   onRemember: (pill: SavedPill) => void;
   onForget: () => void;
   onChoose: () => void;
@@ -106,6 +108,29 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
     });
     return () => { active = false; };
   }, [pill.id, historyRevision]);
+
+  const historyId = config?.history_id || pill.historyId || pill.config?.history_id;
+  useEffect(() => {
+    if (!historyId) return;
+    const key = loadReadKey(historyId);
+    if (!key) return;
+    let active = true;
+    let syncing = false;
+    const sync = async () => {
+      if (!active || syncing || document.visibilityState !== "visible") return;
+      syncing = true;
+      try {
+        const count = await syncServerHistory(pill.id, historyId, key);
+        if (active && count) setHistoryRevision((current) => current + 1);
+      } catch (error) {
+        if (active) setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Could not sync history." });
+      } finally { syncing = false; }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 15 * 60_000);
+    document.addEventListener("visibilitychange", sync);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); };
+  }, [pill.id, historyId, config?.has_history_read_hash, historyKeyRevision]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -181,6 +206,7 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
       }
       onRemember({ id: device!.id, name: device!.name || pill.name,
         firmwareVersion: nextConfig.firmware_version,
+        historyId: nextConfig.history_id,
         config: nextConfig,
         sample: nextSample, readAt: Date.now() });
       void saveReading(fromHardware(device!.id, nextSample)).then(() =>
@@ -249,17 +275,53 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
     setBusy("saving");
     setFeedback(null);
     try {
+      if (patch.history_telemetry) {
+        const historyId = config?.history_id;
+        if (!historyId) throw new Error("Update the Pill firmware before enabling OpenPill history.");
+        let key = loadReadKey(historyId);
+        if (!key && config?.has_history_read_hash) {
+          throw new Error("This Pill already has a history read key. Import it from another phone before enabling history here.");
+        }
+        if (!key) {
+          key = generateReadKey();
+          saveReadKey(historyId, key);
+        }
+        patch.history_read_hash = await hashReadKey(key);
+      }
       await client.saveConfig(patch, setStatus);
       const nextConfig = await client.readConfig();
       setConfig(nextConfig);
-      onRemember({ ...pill, firmwareVersion: nextConfig.firmware_version, config: nextConfig });
+      onRemember({ ...pill, firmwareVersion: nextConfig.firmware_version,
+        historyId: nextConfig.history_id, config: nextConfig });
+      if (patch.history_telemetry && nextConfig.history_id) {
+        const key = loadReadKey(nextConfig.history_id);
+        if (key) void syncServerHistory(pill.id, nextConfig.history_id, key).then((count) => {
+          if (count) setHistoryRevision((current) => current + 1);
+        }).catch(() => {});
+      }
       setSettingsOpen(false);
-      setFeedback({ tone: "success", message: patch.wifi_telemetry ? "Settings saved and a test reading was sent." : "Settings saved." });
+      setFeedback({ tone: "success", message: patch.wifi_telemetry || patch.history_telemetry
+        ? "Settings saved and a test reading was sent." : "Settings saved." });
     } catch (error) {
       setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Settings could not be saved." });
     } finally {
       setBusy(null);
     }
+  }
+
+  async function resetHistory() {
+    if (!client || !connected) return;
+    setBusy("saving");
+    setFeedback(null);
+    try {
+      await client.resetHistory(setStatus);
+      const nextConfig = await client.readConfig();
+      setConfig(nextConfig);
+      onRemember({ ...pill, historyId: nextConfig.history_id, config: nextConfig });
+      setFeedback({ tone: "success", message: "New history identity ready. Select OpenPill history and save to start uploading." });
+    } catch (error) {
+      setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Could not start a new history." });
+    } finally { setBusy(null); }
   }
 
   async function testPost(endpointUrl: string, allowHttp: boolean, wifiTimeoutSeconds: number) {
@@ -368,10 +430,12 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
   const recentBroadcast = broadcast && now - broadcast.at.getTime() < 30 * 60_000;
   const readingSource = connected && sample ? "connected" : recentBroadcast ? "broadcast" : pill.sample ? "saved" : "none";
   const shownSample = readingSource === "connected" ? sample : readingSource === "saved" ? pill.sample : null;
+  const lastTemperature = [...history].reverse().find((reading) => reading.temperatureC != null)?.temperatureC;
+  const lastBattery = [...history].reverse().find((reading) => reading.batteryPercent != null)?.batteryPercent;
   const temperature = shownSample && (shownSample.valid & 2)
-    ? formatTemperature(shownSample.temperatureC, units.temperature) : readingSource === "broadcast" && broadcast?.reading.temperatureC != null ? formatTemperature(broadcast.reading.temperatureC, units.temperature) : "—";
+    ? formatTemperature(shownSample.temperatureC, units.temperature) : readingSource === "broadcast" && broadcast?.reading.temperatureC != null ? formatTemperature(broadcast.reading.temperatureC, units.temperature) : lastTemperature != null ? formatTemperature(lastTemperature, units.temperature) : "—";
   const battery = shownSample && (shownSample.valid & 4)
-    ? `${Math.round(batteryPercentFromMv(shownSample.batteryMv))}%` : readingSource === "broadcast" && broadcast ? `${Math.round(broadcast.reading.batteryPercent)}%` : "—";
+    ? `${Math.round(batteryPercentFromMv(shownSample.batteryMv))}%` : readingSource === "broadcast" && broadcast ? `${Math.round(broadcast.reading.batteryPercent)}%` : lastBattery != null ? `${Math.round(lastBattery)}%` : "—";
   const lastGravity = [...history].reverse().find((reading) => reading.gravity != null)?.gravity;
   const gravity = readingSource === "connected" && sample?.gravity != null
     ? formatGravity(sample.gravity, units.gravity) : recentBroadcast && broadcast?.reading.gravity != null
@@ -423,7 +487,7 @@ export default function PillCard({ pill, device, autoConnect, units, onRemember,
       <div><Tooltip title="Battery"><ThunderboltOutlined aria-label="Battery" /></Tooltip><strong>{battery}</strong></div>
     </div>} />
     {updateOpen && <FirmwareUpdateModal name={name} config={firmwareIdentity} connected={connected} reconnecting={!!reconnectAfterUpdate} onClose={() => setUpdateOpen(false)} onInstall={installUpdate} />}
-    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} /> :
+    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory} /> :
       <Modal open title={`Settings · ${name}`} onCancel={() => setSettingsOpen(false)} footer={null}>
         <p className="muted">Connect to your Pill to view or change its settings.</p>
         <Button type="primary" onClick={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} loading={busy === "connecting"}>Connect to Pill</Button>

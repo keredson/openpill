@@ -15,6 +15,7 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 #include "esp_sntp.h"
+#include "history_identity.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "mbedtls/sha256.h"
@@ -26,6 +27,45 @@
 #define UPDATE_IMAGE_URL "https://keredson.github.io/openpill/firmware/openpill.bin"
 #define UPDATE_MANIFEST_MAX 512
 #define UPDATE_READ_SIZE 2048
+#define HISTORY_POST_URL "https://openpill.yeast.win/v1/readings"
+
+static const uint8_t history_signing_prefix[] = "OpenPill history upload v1";
+
+static bool encode_base64url(const uint8_t *input, size_t length,
+                             char *output, size_t capacity)
+{
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    size_t needed = (length * 8 + 5) / 6;
+    if (capacity <= needed) return false;
+    size_t position = 0;
+    for (size_t i = 0; i < length; i += 3) {
+        uint32_t value = (uint32_t)input[i] << 16;
+        if (i + 1 < length) value |= (uint32_t)input[i + 1] << 8;
+        if (i + 2 < length) value |= input[i + 2];
+        output[position++] = alphabet[(value >> 18) & 63];
+        output[position++] = alphabet[(value >> 12) & 63];
+        if (i + 1 < length) output[position++] = alphabet[(value >> 6) & 63];
+        if (i + 2 < length) output[position++] = alphabet[value & 63];
+    }
+    output[position] = '\0';
+    return true;
+}
+
+static bool parse_hash(const char hex[65], uint8_t output[32])
+{
+    for (size_t i = 0; i < 32; ++i) {
+        int pair[2];
+        for (size_t j = 0; j < 2; ++j) {
+            char digit = hex[i * 2 + j];
+            pair[j] = digit >= '0' && digit <= '9' ? digit - '0' :
+                      digit >= 'a' && digit <= 'f' ? digit - 'a' + 10 : -1;
+            if (pair[j] < 0) return false;
+        }
+        output[i] = (uint8_t)((pair[0] << 4) | pair[1]);
+    }
+    return hex[64] == '\0';
+}
 
 typedef struct {
     char body[UPDATE_MANIFEST_MAX + 1];
@@ -43,6 +83,7 @@ static EventGroupHandle_t wifi_events;
 static esp_netif_t *station_netif;
 static portMUX_TYPE wifi_guard = portMUX_INITIALIZER_UNLOCKED;
 static bool wifi_in_use;
+static bool update_clock_ready(void);
 
 static bool claim_wifi(void)
 {
@@ -208,12 +249,85 @@ static char *make_payload(const hardware_sample_t *sample)
     return payload;
 }
 
+static esp_err_t history_post(const app_config_t *config,
+                              const hardware_sample_t *sample,
+                              char *message, size_t message_size)
+{
+    if (!history_identity_ready()) {
+        set_message(message, message_size, "History signing key unavailable");
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint8_t payload[TELEMETRY_PAYLOAD_LENGTH];
+    uint8_t read_hash[32];
+    uint8_t public_key[HISTORY_PUBLIC_KEY_LENGTH];
+    if (telemetry_encode_sample(sample, payload) != ESP_OK ||
+        !parse_hash(config->history_read_hash, read_hash) ||
+        history_identity_public(public_key) != ESP_OK) {
+        set_message(message, message_size, "Could not prepare history report");
+        return ESP_ERR_INVALID_ARG;
+    }
+    uint8_t signed_bytes[sizeof(history_signing_prefix) + sizeof(read_hash) +
+                         sizeof(payload)];
+    memcpy(signed_bytes, history_signing_prefix, sizeof(history_signing_prefix));
+    memcpy(signed_bytes + sizeof(history_signing_prefix), read_hash,
+           sizeof(read_hash));
+    memcpy(signed_bytes + sizeof(history_signing_prefix) + sizeof(read_hash),
+           payload, sizeof(payload));
+    uint8_t digest[32];
+    if (mbedtls_sha256(signed_bytes, sizeof(signed_bytes), digest, 0) != 0) {
+        set_message(message, message_size, "Could not hash history report");
+        return ESP_FAIL;
+    }
+    uint8_t signature[HISTORY_SIGNATURE_MAX];
+    size_t signature_length = 0;
+    if (history_identity_sign(digest, signature, &signature_length) != ESP_OK) {
+        set_message(message, message_size, "Could not sign history report");
+        return ESP_FAIL;
+    }
+    char key_header[96];
+    char signature_header[112];
+    if (!encode_base64url(public_key, sizeof(public_key), key_header,
+                          sizeof(key_header)) ||
+        !encode_base64url(signature, signature_length, signature_header,
+                          sizeof(signature_header))) {
+        return ESP_FAIL;
+    }
+    esp_http_client_config_t http_config = {
+        .url = HISTORY_POST_URL,
+        .timeout_ms = (int)config->wifi_timeout_s * 1000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&http_config);
+    if (client == NULL) return ESP_ERR_NO_MEM;
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
+    esp_http_client_set_header(client, "X-OpenPill-Key", key_header);
+    esp_http_client_set_header(client, "X-OpenPill-Signature", signature_header);
+    esp_http_client_set_header(client, "X-OpenPill-Read-Hash",
+                               config->history_read_hash);
+    esp_http_client_set_post_field(client, (const char *)payload, sizeof(payload));
+    esp_err_t error = esp_http_client_perform(client);
+    int status = error == ESP_OK ? esp_http_client_get_status_code(client) : 0;
+    esp_http_client_cleanup(client);
+    if (error == ESP_OK && status != 202 && status != 429) error = ESP_FAIL;
+    if (error == ESP_OK) {
+        set_message(message, message_size,
+                    status == 429 ? "History report already current" :
+                                    "History report accepted");
+    } else if (status != 0 && message != NULL && message_size > 0) {
+        snprintf(message, message_size, "History service returned HTTP %d", status);
+    } else {
+        set_message(message, message_size, "History report failed");
+    }
+    return error;
+}
+
 static esp_err_t wifi_report_send_unlocked(const app_config_t *config,
                                            const hardware_sample_t *sample,
                                            char *message, size_t message_size)
 {
     if (config == NULL || sample == NULL || config->wifi_ssid[0] == '\0' ||
-        config->endpoint_url[0] == '\0') {
+        (!config->history_telemetry && config->endpoint_url[0] == '\0')) {
         set_message(message, message_size, "Wi-Fi configuration is incomplete");
         return ESP_ERR_INVALID_ARG;
     }
@@ -226,6 +340,17 @@ static esp_err_t wifi_report_send_unlocked(const app_config_t *config,
             wifi_disconnect(wifi_handler, ip_handler);
         }
         set_message(message, message_size, "Could not connect to the Wi-Fi network");
+        return error;
+    }
+
+    if (config->history_telemetry) {
+        if (!update_clock_ready()) {
+            set_message(message, message_size, "Could not set clock for HTTPS");
+            error = ESP_ERR_TIMEOUT;
+        } else {
+            error = history_post(config, sample, message, message_size);
+        }
+        wifi_disconnect(wifi_handler, ip_handler);
         return error;
     }
 

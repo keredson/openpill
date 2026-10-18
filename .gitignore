@@ -10,3 +10,4 @@ web/.pnp.*
 bridge/.pio/
 bridge/sdkconfig.*
 web/public/firmware/
+server/data/

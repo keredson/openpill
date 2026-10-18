@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "app_config.h"
+#include "bootloader_random.h"
 #include "ble_ota.h"
 #include "esp_app_desc.h"
 #include "esp_attr.h"
@@ -12,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "hardware.h"
+#include "history_identity.h"
 #include "vendor_calibration.h"
 #include "wifi_report.h"
 
@@ -125,7 +127,7 @@ static void send_reports(const app_config_t *config,
         esp_err_t error = ble_ota_send_telemetry(sample);
         printf("Telemetry: BLE burst %s\n", esp_err_to_name(error));
     }
-    if (config->wifi_telemetry) {
+    if (config->wifi_telemetry || config->history_telemetry) {
         hardware_led_flash(1, 90, 0);
         char message[128];
         esp_err_t error = wifi_report_send(config, sample, message, sizeof(message));
@@ -160,6 +162,12 @@ void app_main(void)
     if (config_error != ESP_OK) {
         printf("Configuration is read-only for this boot: %s\n",
                esp_err_to_name(config_error));
+    }
+    bootloader_random_enable();
+    esp_err_t identity_error = history_identity_init();
+    bootloader_random_disable();
+    if (identity_error != ESP_OK) {
+        printf("History identity unavailable: %s\n", esp_err_to_name(identity_error));
     }
     ESP_ERROR_CHECK(hardware_init());
     validate_running_image();

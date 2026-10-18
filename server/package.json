@@ -1,0 +1,10 @@
+{
+  "name": "openpill-history-server",
+  "private": true,
+  "version": "0.1.0",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --experimental-sqlite index.cjs",
+    "test": "node --experimental-sqlite --test"
+  }
+}

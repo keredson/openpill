@@ -46,6 +46,18 @@ export function parseBroadcast(event: BluetoothAdvertisingEvent): BroadcastReadi
   return { temperatureC, gravity, batteryPercent };
 }
 
+export function parseTelemetry(data: DataView): BroadcastReading | null {
+  if (data.byteLength !== 25 || data.getUint8(0) !== 0x52 || data.getUint8(1) !== 0x41 ||
+      data.getUint8(2) !== 0x50 || data.getUint8(3) !== 0x54 || data.getUint8(4) !== 2) return null;
+  const encodedTemperature = data.getUint16(11, false);
+  const temperatureC = encodedTemperature ? encodedTemperature / 128 - 273.15 : null;
+  return {
+    temperatureC,
+    gravity: parseSpecificGravity(data.getFloat32(13, false)),
+    batteryPercent: Math.max(0, Math.min(100, data.getInt16(23, false) / 256))
+  };
+}
+
 export async function choosePill(): Promise<BluetoothDevice> {
   if (!navigator.bluetooth) throw new Error("This browser does not provide Web Bluetooth.");
   return navigator.bluetooth.requestDevice({
@@ -64,6 +76,9 @@ export interface PublicConfig {
   wifi_timeout_s: number;
   ble_telemetry: boolean;
   wifi_telemetry: boolean;
+  history_telemetry?: boolean;
+  history_id?: string;
+  has_history_read_hash?: boolean;
   auto_wifi_update: boolean;
   allow_http: boolean;
   wifi_ssid: string;
@@ -76,6 +91,8 @@ export interface ConfigPatch {
   wifi_timeout_s: number;
   ble_telemetry: boolean;
   wifi_telemetry: boolean;
+  history_telemetry: boolean;
+  history_read_hash?: string;
   auto_wifi_update: boolean;
   allow_http: boolean;
   endpoint_url: string;
@@ -549,6 +566,11 @@ export class OpenPillClient {
   async saveConfig(patch: ConfigPatch, onStatus: (status: ConfigStatus) => void) {
     await this.stageConfig(patch, onStatus);
     await this.applyConfig(1, patch.wifi_timeout_s, onStatus);
+  }
+
+  async resetHistory(onStatus: (status: ConfigStatus) => void) {
+    if (!this.secure) throw new Error("Update the Pill firmware before resetting its history identity.");
+    await this.applyConfig(5, 30, onStatus);
   }
 
   async testPost(endpointUrl: string, allowHttp: boolean, wifiTimeoutSeconds: number, onStatus: (status: ConfigStatus) => void) {

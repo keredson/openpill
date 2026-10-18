@@ -3,7 +3,8 @@
 OpenPill is open-source firmware and an app for the original
 ESP32-based RAPT Pill hydrometer. It lets the Pill report temperature, specific
 gravity, and battery level directly over Bluetooth, or send readings by Wi-Fi
-as JSON to a POST URL you choose. No cloud account or service is required.
+as JSON to a POST URL you choose. An optional, accountless history service is
+also being prepared. No cloud account or service is required for local use.
 
 ## Why OpenPill?
 
@@ -18,10 +19,12 @@ not a replacement for the whole RAPT platform.
 ## What it does
 
 - Shows temperature, gravity, and battery readings in the browser when the
-  Pill is nearby. The app keeps a local history while it receives data.
+  Pill is nearby. The app keeps a local history while it receives data and can
+  sync additional readings from the optional history service.
 - Sends scheduled readings over Bluetooth, Wi-Fi, or both. Wi-Fi uploads are
-  JSON HTTP POST requests to an endpoint you choose. Your readings do not pass
-  through OpenPill servers.
+  JSON HTTP POST requests to an endpoint you choose, or signed binary uploads
+  to the optional OpenPill history service. The destination is off until you
+  choose it.
 - Lets you configure Wi-Fi, reporting intervals, and firmware updates from a
   browser. The web app is static and does not collect your credentials.
 - Conserves battery by sleeping between reports. Position and movement open a
@@ -48,7 +51,9 @@ risk of damage.
 For firmware builds, command-line tools, and deployment, see
 [DEVELOPMENT.md](DEVELOPMENT.md). The [recovery guide](docs/recovery.md)
 covers failures and restoring a saved copy; [BLE OTA details](docs/ble-ota.md)
-document the update protocol.
+document the update protocol. [History service details](docs/history-service.md)
+cover its keys, protocol, and server setup. The public service has not been
+deployed yet.
 
 ## Current status
 
