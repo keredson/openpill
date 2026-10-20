@@ -43,9 +43,9 @@ bridge itself; it does not reliably hold the Pill in reset. Never jumper EN to
 - The battery measurement path currently selects the LIS3DH's auxiliary ADC2
   registers (`OUT_ADC2_L/H`), not ESP32 ADC2. The board also has a stored
   charging endpoint in `nvs:adc_cal`; OpenPill reads it without modifying NVS.
-  The physical input routing and voltage conversion still need validation.
-  On this Pill, ADC2 reads close to its negative limit while battery-terminal
-  voltage changes, so its reported battery voltage and percentage are wrong.
+  R2 returns through ESP32 GPIO5. OpenPill drives GPIO5 low to complete the
+  battery divider before reading ADC2. Voltage conversion still needs a
+  simultaneous meter comparison across the battery's operating range.
 - GPIO23 is charger-present/USB detect and is active-low.
 - GPIO34 is used as OpenPill's deep-sleep wake input from the LIS3DH interrupt
   line. Firmware tests that the sensor can assert this input before relying on
@@ -108,8 +108,14 @@ sequence.
 
 A BLE read after installing this sequence confirmed the four-sample flag and
 still reported ADC2 raw `-127`, 4.189 V, and 100% with the charger connected.
-Waiting for fresh XYZ samples and averaging ADC2 does not explain the incorrect
-battery estimate on this Pill.
+Waiting for fresh XYZ samples and averaging ADC2 did not explain the incorrect
+battery estimate on this Pill. GPIO5 was subsequently found connected to R2's
+return pad, but had remained an input in OpenPill. After configuring it as a
+low output, a live BLE diagnostic with the charger connected reported ADC2
+`95` (10-bit) and 3.837 V, instead of the previous fixed `-508` and 4.189 V.
+ADC1/ADC2/ADC3 were `101/95/-508` in the same diagnostic. This establishes
+that the missing GPIO5 setup caused the stuck ADC2 reading. The 3.837 V
+conversion has not yet been compared with a simultaneous meter reading.
 
 ## LEDs
 
