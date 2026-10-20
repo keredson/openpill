@@ -45,10 +45,15 @@ function database(): Promise<IDBDatabase> {
 }
 
 export function fromBroadcast(pillId: string, reading: BroadcastReading, at = Date.now()): HistoricalReading {
+  const acceleration = reading.acceleration;
   return {
     pillId, at, source: "broadcast",
     ...(reading.temperatureC != null && { temperatureC: reading.temperatureC }),
     ...(reading.gravity != null && { gravity: reading.gravity }),
+    ...(acceleration && {
+      acceleration,
+      tiltDegrees: Math.min(90, Math.atan2(Math.hypot(acceleration[1], acceleration[2]), acceleration[0]) * 180 / Math.PI)
+    }),
     batteryPercent: reading.batteryPercent
   };
 }
@@ -59,7 +64,7 @@ export function fromHardware(pillId: string, sample: HardwareSample, at = Date.n
     pillId, at, source: "connected",
     ...((sample.valid & 1) !== 0 && {
       acceleration: sample.acceleration,
-      tiltDegrees: Math.atan2(Math.hypot(y, z), Math.abs(x)) * 180 / Math.PI
+      tiltDegrees: Math.min(90, Math.atan2(Math.hypot(y, z), x) * 180 / Math.PI)
     }),
     ...((sample.valid & 2) !== 0 && { temperatureC: sample.temperatureC }),
     ...(sample.gravity != null && Number.isFinite(sample.gravity) && { gravity: sample.gravity }),
@@ -101,7 +106,7 @@ export async function loadReadings(pillId: string): Promise<HistoricalReading[]>
           const comparable = (other.temperatureC != null && reading.temperatureC != null) ||
             (other.gravity != null && reading.gravity != null) ||
             (other.batteryPercent != null && reading.batteryPercent != null);
-          if (comparable &&
+          if (comparable && (other.tiltDegrees != null || reading.tiltDegrees == null) &&
               (other.batteryPercent == null || reading.batteryPercent == null || Math.abs(other.batteryPercent - reading.batteryPercent) < 1) &&
               (other.temperatureC == null || reading.temperatureC == null || Math.abs(other.temperatureC - reading.temperatureC) < 0.03) &&
               (other.gravity == null || reading.gravity == null || Math.abs(other.gravity - reading.gravity) < 0.0005)) return false;

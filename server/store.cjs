@@ -9,12 +9,20 @@ const directory = workerData.directory;
 fs.mkdirSync(directory, {recursive: true, mode: 0o700});
 const meta = new DatabaseSync(path.join(directory, 'pills.sqlite'));
 meta.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000');
-meta.exec('CREATE TABLE IF NOT EXISTS pills (ordinal INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, public_key BLOB NOT NULL, read_hash BLOB NOT NULL, last_us INTEGER NOT NULL DEFAULT 0)');
-const lookup = meta.prepare('SELECT ordinal,read_hash FROM pills WHERE key=?');
+meta.exec('CREATE TABLE IF NOT EXISTS pills (ordinal INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, public_key BLOB NOT NULL, read_hash BLOB NOT NULL, control_hash BLOB, last_us INTEGER NOT NULL DEFAULT 0)');
+if (!meta.prepare('PRAGMA table_info(pills)').all().some((column) => column.name === 'control_hash'))
+  meta.exec('ALTER TABLE pills ADD COLUMN control_hash BLOB');
+meta.exec('CREATE TABLE IF NOT EXISTS profiles (pill_id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL)');
+const lookup = meta.prepare('SELECT ordinal,read_hash,control_hash FROM pills WHERE key=?');
 const register = meta.prepare('INSERT OR IGNORE INTO pills(key,public_key,read_hash) VALUES(?,?,?)');
+const updateControl = meta.prepare('UPDATE pills SET control_hash=? WHERE ordinal=?');
+const readProfile = meta.prepare('SELECT revision,body FROM profiles WHERE pill_id=?');
+const putProfile = meta.prepare('INSERT INTO profiles(pill_id,revision,body) VALUES(?,?,?) ON CONFLICT(pill_id) DO UPDATE SET revision=excluded.revision,body=excluded.body');
 const updateLast = meta.prepare('UPDATE pills SET last_us=max(last_us,?) WHERE ordinal=?');
-const loaded = meta.prepare('SELECT key,public_key,read_hash,last_us FROM pills').all().map((row) => ({
-  key: row.key, publicKey: row.public_key, readHash: row.read_hash, lastUs: Number(row.last_us)
+const loaded = meta.prepare('SELECT p.key,p.public_key,p.read_hash,p.control_hash,p.last_us,f.body AS profiles_body FROM pills p LEFT JOIN profiles f ON f.pill_id=p.ordinal').all().map((row) => ({
+  key: row.key, publicKey: row.public_key, readHash: row.read_hash,
+  controlHash: row.control_hash, lastUs: Number(row.last_us),
+  curve: row.profiles_body ? JSON.parse(row.profiles_body).profiles.at(-1)?.curve || null : null
 }));
 
 let writerDay = '';
@@ -123,15 +131,48 @@ function prune() {
   }
   const cutoffUs = Date.parse(`${cutoffDay.slice(0, 4)}-${cutoffDay.slice(4, 6)}-${cutoffDay.slice(6, 8)}T00:00:00Z`) * 1000;
   meta.prepare('DELETE FROM pills WHERE last_us < ?').run(cutoffUs);
+  meta.exec('DELETE FROM profiles WHERE pill_id NOT IN (SELECT ordinal FROM pills)');
+}
+
+function getProfiles(key) {
+  const pill = lookup.get(key);
+  return pill ? readProfile.get(pill.ordinal) || {revision: 0, body: '{"version":1,"profiles":[]}'} : null;
+}
+
+function saveProfiles(key, expected, body) {
+  const pill = lookup.get(key);
+  if (!pill) return null;
+  meta.exec('BEGIN IMMEDIATE');
+  try {
+    const current = readProfile.get(pill.ordinal)?.revision || 0;
+    if (current !== expected) { meta.exec('ROLLBACK'); return {conflict: true, revision: current}; }
+    putProfile.run(pill.ordinal, current + 1, body);
+    meta.exec('COMMIT');
+    return {revision: current + 1};
+  } catch (error) { meta.exec('ROLLBACK'); throw error; }
+}
+
+function claimControl(key, publicKey, readHash, controlHash) {
+  meta.exec('BEGIN IMMEDIATE');
+  try {
+    register.run(key, Buffer.from(publicKey), Buffer.from(readHash));
+    const pill = lookup.get(key);
+    if (!pill || !Buffer.from(pill.read_hash).equals(Buffer.from(readHash))) throw new Error('Read hash conflict');
+    updateControl.run(Buffer.from(controlHash), pill.ordinal);
+    meta.exec('COMMIT');
+  } catch (error) { meta.exec('ROLLBACK'); throw error; }
 }
 
 parentPort.postMessage({type: 'ready', loaded});
-parentPort.on('message', ({requestId, type, rows, key, after, limit}) => {
+parentPort.on('message', ({requestId, type, rows, key, after, limit, expected, body, publicKey, readHash, controlHash}) => {
   try {
     const value = type === 'insert' ? insertBatch(rows) :
       type === 'read' ? readPage(key, after, limit) :
+      type === 'getProfiles' ? getProfiles(key) :
+      type === 'saveProfiles' ? saveProfiles(key, expected, body) :
+      type === 'claimControl' ? claimControl(key, publicKey, readHash, controlHash) :
       type === 'prune' ? prune() : null;
-    if (!['insert', 'read', 'prune'].includes(type)) throw new Error('Unknown store request');
+    if (!['insert', 'read', 'getProfiles', 'saveProfiles', 'claimControl', 'prune'].includes(type)) throw new Error('Unknown store request');
     parentPort.postMessage({requestId, ok: true, value});
   } catch (error) {
     parentPort.postMessage({requestId, ok: false, error: String(error)});

@@ -16,6 +16,7 @@
 #include "esp_wifi.h"
 #include "esp_sntp.h"
 #include "history_identity.h"
+#include "openpill_calibration.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "mbedtls/sha256.h"
@@ -30,6 +31,25 @@
 #define HISTORY_POST_URL "https://openpill.yeast.win/v1/readings"
 
 static const uint8_t history_signing_prefix[] = "OpenPill history upload v1";
+
+typedef struct {
+    uint8_t bytes[186];
+    size_t length;
+    bool overflow;
+} history_reply_t;
+
+static esp_err_t history_reply_event(esp_http_client_event_t *event)
+{
+    if (event->event_id != HTTP_EVENT_ON_DATA) return ESP_OK;
+    history_reply_t *reply = event->user_data;
+    if (event->data_len < 0 || (size_t)event->data_len > sizeof(reply->bytes) - reply->length) {
+        reply->overflow = true;
+        return ESP_FAIL;
+    }
+    memcpy(reply->bytes + reply->length, event->data, event->data_len);
+    reply->length += event->data_len;
+    return ESP_OK;
+}
 
 static bool encode_base64url(const uint8_t *input, size_t length,
                              char *output, size_t capacity)
@@ -292,10 +312,13 @@ static esp_err_t history_post(const app_config_t *config,
                           sizeof(signature_header))) {
         return ESP_FAIL;
     }
+    history_reply_t reply = {0};
     esp_http_client_config_t http_config = {
         .url = HISTORY_POST_URL,
         .timeout_ms = (int)config->wifi_timeout_s * 1000,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = history_reply_event,
+        .user_data = &reply,
     };
     esp_http_client_handle_t client = esp_http_client_init(&http_config);
     if (client == NULL) return ESP_ERR_NO_MEM;
@@ -310,6 +333,10 @@ static esp_err_t history_post(const app_config_t *config,
     int status = error == ESP_OK ? esp_http_client_get_status_code(client) : 0;
     esp_http_client_cleanup(client);
     if (error == ESP_OK && status != 202 && status != 429) error = ESP_FAIL;
+    if (error == ESP_OK && !reply.overflow && reply.length > 0 &&
+        !openpill_calibration_apply(reply.bytes, reply.length)) {
+        printf("History: ignored invalid calibration response\n");
+    }
     if (error == ESP_OK) {
         set_message(message, message_size,
                     status == 429 ? "History report already current" :

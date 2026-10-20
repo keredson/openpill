@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "hardware.h"
-#include "vendor_calibration.h"
+#include "openpill_calibration.h"
 
 #define RAPT_PACKET_VERSION 2
 #define DEGREES_PER_RADIAN 57.29577951308232f
@@ -89,7 +89,7 @@ float telemetry_gravity(const hardware_sample_t *sample)
     if (angle > 90.0f) {
         angle = 90.0f;
     }
-    return vendor_calibration_gravity(angle);
+    return openpill_calibration_gravity(angle);
 }
 
 esp_err_t telemetry_encode_sample(const hardware_sample_t *sample,

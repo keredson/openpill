@@ -64,10 +64,11 @@ type Props = {
   onForget: () => void;
   firmwareInfo: ReactNode;
   historyReadKey: string | null;
+  historyControlKey: string | null;
   onResetHistory: () => Promise<void>;
 };
 
-export default function SettingsModal({ name, config, connected, connecting, onConnect, busy, saving, testing, status, onClose, onSave, onTestPost, onScanWifi, onConfigureWifi, onForget, firmwareInfo, historyReadKey, onResetHistory }: Props) {
+export default function SettingsModal({ name, config, connected, connecting, onConnect, busy, saving, testing, status, onClose, onSave, onTestPost, onScanWifi, onConfigureWifi, onForget, firmwareInfo, historyReadKey, historyControlKey, onResetHistory }: Props) {
   const [draft, setDraft] = useState<PublicConfig>({ ...config });
   const [wifiOpen, setWifiOpen] = useState(false);
   const [exampleOpen, setExampleOpen] = useState(false);
@@ -157,6 +158,7 @@ export default function SettingsModal({ name, config, connected, connecting, onC
           {config.wifi_ssid && destination === "off" && <Alert type="info" showIcon message="Wi-Fi is ready. Choose a destination to upload readings; history is off until you opt in." />}
           {draft.history_telemetry && <><p>OpenPill stores up to 90 days of readings. This browser keeps the read key; copy it to add the history on another phone.</p>
             {config.history_id && historyReadKey && <Button htmlType="button" onClick={() => void navigator.clipboard.writeText(`${config.history_id}:${historyReadKey}`)}>Copy history key</Button>}
+            {config.history_id && historyReadKey && historyControlKey && <><Button htmlType="button" onClick={() => void navigator.clipboard.writeText(`${config.history_id}:${historyReadKey}:${historyControlKey}`)}>Copy history and control keys</Button><small>Sharing the control key lets another phone edit calibration.</small></>}
             {config.has_history_read_hash && !historyReadKey && <Alert type="warning" showIcon message="This browser does not have the read key. Import it from another phone, or start a new history." />}
             {config.has_history_read_hash && !historyReadKey && <Popconfirm title="Start a new history?" description="The old server history will be inaccessible without its read key." onConfirm={() => void onResetHistory()} okText="Start new history" cancelText="Cancel"><Button htmlType="button" danger disabled={!connected || busy}>Start new history</Button></Popconfirm>}
           </>}

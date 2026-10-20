@@ -42,6 +42,49 @@ records as `application/vnd.openpill.history-v1`. Each record is an unsigned
 `X-Next-After` gives the next cursor. A successful empty response has zero
 body bytes. The PWA saves pages in IndexedDB before advancing its cursor.
 
+## Calibration profiles
+
+The PWA derives tilt from the three acceleration values already present in the
+25-byte reading. It keeps the original packet unchanged. Calibration profiles
+contain a start time, optional dry assembled mass, and timestamped reference
+gravity points. A point entered without Bluetooth uses linear interpolation
+between nearby readings before and after its measurement time. It remains
+pending until a later reading arrives. A new profile begins when the Pill is
+opened or its balance changes; older readings use the earlier profile.
+
+The PWA fits a floating-body force and torque model to the points. Its starting
+housing geometry is an approximate 37 mm diameter, 125 mm long rounded capsule.
+Measured mass lets the fit vary effective length to account for cap closure;
+without measured mass, it fixes length at 125 mm and fits effective mass. The
+physical fit should be checked against reference gravities spread across the
+intended range. The housing contour has not been measured precisely.
+
+`pills.sqlite` holds the profile document in a `profiles` table keyed to the
+Pill's metadata row. Daily SQLite files continue to contain readings only.
+`GET /v1/profiles/<history-id>` uses the read key and returns a versioned JSON
+document with an `ETag` revision. `PUT` uses a separate control key, requires
+`If-Match` with the last revision, and is limited to 16 KiB, 16 profiles, and
+16 reference points per profile. The PWA caches profiles locally and retries a
+local pending change when it next syncs.
+
+To bind or rotate a control key, a phone with physical Bluetooth access gets a
+five-minute, one-use challenge from `GET /v1/control/<history-id>` using the read
+key. It asks the Pill to sign `OpenPill history control v1\0` followed by the
+32-byte SHA-256 hash of the control key and the 32-byte challenge. It sends the
+hash, challenge, and DER signature to `PUT /v1/control/<history-id>`. The server verifies the Pill's signing key and
+stores only the control-key hash. Sharing the read key grants history access;
+sharing both keys grants calibration control.
+
+The latest fitted profile carries a 91-sample gravity curve derived from the
+physical model at integer tilt degrees. A history POST response contains
+`OPC1` followed by 91 big-endian 16-bit SG values multiplied by 10,000. Zero
+means the model has no result at that angle. `OPC0` clears the previous curve
+when a new profile is pending. The Pill interpolates the curve on later readings
+and retains it through deep sleep in RTC memory; a full power loss requires a
+new history connection to reload it. The previous gravity calculation remains
+the fallback where no fitted sample is available. No new NVS data is written
+for calibration or control keys.
+
 ## Server operation
 
 Run Node 22.13 or newer:
@@ -60,7 +103,7 @@ local Vite development; override with `OPENPILL_ORIGINS` if the PWA moves.
 Protect the public endpoint with Cloudflare rate limiting because each newly
 generated signing key can start a new history.
 
-The SQLite worker keeps Pill metadata in `pills.sqlite` and readings in one
+The SQLite worker keeps Pill metadata and calibration profiles in `pills.sqlite` and readings in one
 SQLite file per UTC day, keyed by a small integer Pill ordinal and timestamp.
 Writes are grouped in RAM and committed every minute. A daily sweep
 removes whole day files older than 90 days and old Pill metadata. An active

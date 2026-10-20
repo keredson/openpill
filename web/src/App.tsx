@@ -6,10 +6,11 @@ import PillCard from "./PillCard";
 import pillReady from "./assets/pill-ready.svg";
 import { loadSavedPills, SavedPill, shouldImportGrantedPills, storeSavedPills } from "./savedPills";
 import { deleteReadings } from "./history";
+import { forgetProfiles } from "./calibrationProfiles";
 import { handleInternalLink, routeUrl } from "./navigation";
 import { sitePath } from "./sitePath";
 import { loadUnitPreferences, storeUnitPreferences, UnitPreferences } from "./units";
-import { forgetReadKey, saveReadKey } from "./historyKeys";
+import { forgetReadKey, forgetControlKey, saveReadKey, saveControlKey } from "./historyKeys";
 
 export default function App() {
   const [pills, setPills] = useState<SavedPill[]>(loadSavedPills);
@@ -63,15 +64,17 @@ export default function App() {
     const removed = pills.find((pill) => pill.id === id);
     setPills((current) => current.filter((item) => item.id !== id));
     void deleteReadings(id).catch(() => {});
+    forgetProfiles(id);
     if (removed?.historyId && !pills.some((pill) => pill.id !== id && pill.historyId === removed.historyId))
-      forgetReadKey(removed.historyId);
+      { forgetReadKey(removed.historyId); forgetControlKey(removed.historyId); forgetProfiles(removed.historyId); }
   }
 
   function importHistory() {
-    const match = /^([0-9a-f]{64}):([A-Za-z0-9_-]{43})$/.exec(importValue.trim());
+    const match = /^([0-9a-f]{64}):([A-Za-z0-9_-]{43})(?::([A-Za-z0-9_-]{43}))?$/.exec(importValue.trim());
     if (!match) { setImportError("Paste a history key copied from the first phone."); return; }
     try {
       saveReadKey(match[1], match[2]);
+      if (match[3]) saveControlKey(match[1], match[3]);
       setHistoryKeyRevision((current) => current + 1);
       const existing = pills.find((pill) => pill.historyId === match[1] || pill.config?.history_id === match[1]);
       if (!existing) rememberPill({ id: `history:${match[1]}`, historyId: match[1], name: "OpenPill history" });
@@ -140,8 +143,8 @@ export default function App() {
 
       {pills.length === 0 && <><Card className="connect-guide">{connectionGuide}</Card><Button onClick={() => setImportOpen(true)}>Import history key</Button></>}
       <Modal title="Import OpenPill history" open={importOpen} onCancel={() => setImportOpen(false)} onOk={importHistory} okText="Import">
-        <p>Paste the history key copied from the first phone. It grants access to stored readings.</p>
-        <Input.Password value={importValue} onChange={(event) => { setImportValue(event.target.value); setImportError(""); }} placeholder="History ID:read key" autoComplete="off" />
+        <p>Paste a read key to view history and calibration. If you also received the control key, include it to edit calibration.</p>
+        <Input.Password value={importValue} onChange={(event) => { setImportValue(event.target.value); setImportError(""); }} placeholder="History ID:read key[:control key]" autoComplete="off" />
         {importError && <Alert type="error" showIcon message={importError} />}
       </Modal>
       <Modal className="connect-modal" open={pills.length > 0 && guideOpen} onCancel={() => setGuideOpen(false)} footer={null} width={900} aria-label="How to connect a Pill">

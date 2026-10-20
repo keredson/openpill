@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Dropdown, Modal, Popconfirm, Tooltip } from "antd";
 import { DeleteOutlined, DisconnectOutlined, ExperimentOutlined, HeatMapOutlined, LinkOutlined, LoadingOutlined, MoreOutlined, ReloadOutlined, SettingOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { BroadcastReading, ConfigPatch, ConfigStatus, FirmwareImage, HardwareSample, loadFirmwareImage, OpenPillClient, OtaProgress, parseBroadcast, PublicConfig } from "./ble";
@@ -8,8 +8,11 @@ import FirmwareUpdateModal from "./FirmwareUpdateModal";
 import type { SavedPill } from "./savedPills";
 import { fromBroadcast, fromHardware, HistoricalReading, loadReadings, saveReading, syncServerHistory } from "./history";
 import PillHistory, { HistoryPeriod } from "./PillHistory";
+import CalibrationModal from "./CalibrationModal";
+import { loadProfiles, resolvePendingProfiles, syncProfiles } from "./calibrationProfiles";
+import { fitPhysicalProfile, gravityFromAngle } from "./physicsCalibration";
 import { batteryPercentFromMv } from "./battery";
-import { generateReadKey, hashReadKey, loadReadKey, saveReadKey } from "./historyKeys";
+import { generateReadKey, hashReadKey, loadReadKey, saveReadKey, loadControlKey, saveControlKey } from "./historyKeys";
 import { formatGravity, formatTemperature, UnitPreferences } from "./units";
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
@@ -61,6 +64,8 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
   const [lastRead, setLastRead] = useState<Date | null>(null);
   const [status, setStatus] = useState<ConfigStatus>({ version: 1, state: 0, message: "Ready" });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
+  const [profileRevision, setProfileRevision] = useState(0);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const [history, setHistory] = useState<HistoricalReading[]>([]);
@@ -102,7 +107,11 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
   useEffect(() => {
     let active = true;
     void loadReadings(pill.id).then((readings) => {
-      if (active) { setHistory(readings); setHistoryLoading(false); setHistoryError(""); }
+      if (active) {
+        const id = config?.history_id || pill.historyId || pill.config?.history_id || pill.id;
+        if (resolvePendingProfiles(id, readings)) setProfileRevision((revision) => revision + 1);
+        setHistory(readings); setHistoryLoading(false); setHistoryError("");
+      }
     }).catch(() => {
       if (active) { setHistoryLoading(false); setHistoryError("Could not load saved readings."); }
     });
@@ -110,6 +119,9 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
   }, [pill.id, historyRevision]);
 
   const historyId = config?.history_id || pill.historyId || pill.config?.history_id;
+  const profileStorageId = historyId || pill.id;
+  const profileServiceId = historyId && loadReadKey(historyId) ? historyId : undefined;
+  const profileChanged = useCallback(() => setProfileRevision((revision) => revision + 1), []);
   useEffect(() => {
     if (!historyId) return;
     const key = loadReadKey(historyId);
@@ -122,6 +134,9 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       try {
         const count = await syncServerHistory(pill.id, historyId, key);
         if (active && count) setHistoryRevision((current) => current + 1);
+        const previous = loadProfiles(historyId);
+        const profiles = await syncProfiles(historyId, key, loadControlKey(historyId));
+        if (active && (profiles.revision !== previous.revision || profiles.dirty !== previous.dirty)) profileChanged();
       } catch (error) {
         if (active) setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Could not sync history." });
       } finally { syncing = false; }
@@ -130,7 +145,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
     const timer = window.setInterval(() => void sync(), 15 * 60_000);
     document.addEventListener("visibilitychange", sync);
     return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); };
-  }, [pill.id, historyId, config?.has_history_read_hash, historyKeyRevision]);
+  }, [pill.id, historyId, config?.has_history_read_hash, historyKeyRevision, profileChanged]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
@@ -211,6 +226,8 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
         sample: nextSample, readAt: Date.now() });
       void saveReading(fromHardware(device!.id, nextSample)).then(() =>
         setHistoryRevision((current) => current + 1)).catch(() => {});
+      if (nextConfig.history_telemetry && nextConfig.history_id && loadControlKey(nextConfig.history_id))
+        void claimHistoryControl(nextConfig.history_id).catch(() => {});
     } catch (error) {
       client.disconnect();
       setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Could not connect to this Pill." });
@@ -219,6 +236,26 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       connecting.current = false;
       setBusy(null);
     }
+  }
+
+  async function claimHistoryControl(historyId: string): Promise<void> {
+    if (!client) return;
+    const controlKey = loadControlKey(historyId);
+    if (!controlKey) return;
+    const readKey = loadReadKey(historyId);
+    if (!readKey) throw new Error("History read key is required to authorize calibration control.");
+    const challenge = await fetch(`https://openpill.yeast.win/v1/control/${historyId}`, {
+      headers: { Authorization: `Bearer ${readKey}` }, cache: "no-store"
+    });
+    if (!challenge.ok) throw new Error(`Calibration control challenge failed (HTTP ${challenge.status}).`);
+    const nonce = (await challenge.json() as { nonce: string }).nonce;
+    const hash = await hashReadKey(controlKey);
+    const signature = await client.signHistoryControl(hash, nonce);
+    const claim = await fetch(`https://openpill.yeast.win/v1/control/${historyId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash, nonce, signature })
+    });
+    if (!claim.ok) throw new Error(`Calibration control registration failed (HTTP ${claim.status}).`);
   }
 
   useEffect(() => {
@@ -287,9 +324,19 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
           saveReadKey(historyId, key);
         }
         patch.history_read_hash = await hashReadKey(key);
+        let controlKey = loadControlKey(historyId);
+        if (!controlKey) {
+          controlKey = generateReadKey();
+          saveControlKey(historyId, controlKey);
+        }
       }
       await client.saveConfig(patch, setStatus);
       const nextConfig = await client.readConfig();
+      let controlWarning = "";
+      if (patch.history_telemetry && nextConfig.history_id) {
+        try { await claimHistoryControl(nextConfig.history_id); }
+        catch (error) { controlWarning = error instanceof Error ? error.message : "Could not authorize calibration control."; }
+      }
       setConfig(nextConfig);
       onRemember({ ...pill, firmwareVersion: nextConfig.firmware_version,
         historyId: nextConfig.history_id, config: nextConfig });
@@ -300,8 +347,9 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
         }).catch(() => {});
       }
       setSettingsOpen(false);
-      setFeedback({ tone: "success", message: patch.wifi_telemetry || patch.history_telemetry
-        ? "Settings saved and a test reading was sent." : "Settings saved." });
+      setFeedback(controlWarning ? { tone: "error", message: `Settings saved. ${controlWarning}` } :
+        { tone: "success", message: patch.wifi_telemetry || patch.history_telemetry
+          ? "Settings saved and a test reading was sent." : "Settings saved." });
     } catch (error) {
       setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Settings could not be saved." });
     } finally {
@@ -437,9 +485,34 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
   const battery = shownSample && (shownSample.valid & 4)
     ? `${Math.round(batteryPercentFromMv(shownSample.batteryMv))}%` : readingSource === "broadcast" && broadcast ? `${Math.round(broadcast.reading.batteryPercent)}%` : lastBattery != null ? `${Math.round(lastBattery)}%` : "—";
   const lastGravity = [...history].reverse().find((reading) => reading.gravity != null)?.gravity;
-  const gravity = readingSource === "connected" && sample?.gravity != null
-    ? formatGravity(sample.gravity, units.gravity) : recentBroadcast && broadcast?.reading.gravity != null
-      ? formatGravity(broadcast.reading.gravity, units.gravity) : lastGravity != null ? formatGravity(lastGravity, units.gravity) : "—";
+  const calibratedHistory = useMemo(() => {
+    const profiles = loadProfiles(profileStorageId).document.profiles;
+    if (!profiles.length) return history;
+    const fits = profiles.map((profile) => fitPhysicalProfile(profile));
+    const cache = profiles.map(() => new Map<number, number | null>());
+    return history.map((reading) => {
+      if (reading.tiltDegrees == null) return reading;
+      let index = profiles.length - 1;
+      while (index >= 0 && reading.at < profiles[index].startsAt) index--;
+      if (index < 0) return reading;
+      if (!fits[index]) return { ...reading, gravity: undefined };
+      const scaled = reading.tiltDegrees * 2;
+      const lower = Math.floor(scaled), upper = Math.ceil(scaled);
+      for (const bucket of [lower, upper])
+        if (!cache[index].has(bucket)) cache[index].set(bucket, gravityFromAngle(bucket / 2, fits[index]!));
+      const a = cache[index].get(lower), b = cache[index].get(upper);
+      const gravity = a != null && b != null ? a + (b - a) * (scaled - lower) : null;
+      return { ...reading, gravity: gravity ?? undefined };
+    });
+  }, [history, profileStorageId, profileRevision]);
+  const calibratedLastGravity = calibratedHistory.at(-1) !== history.at(-1)
+    ? calibratedHistory.at(-1)?.gravity : null;
+  const calibrationPending = calibratedHistory.at(-1) !== history.at(-1) &&
+    calibratedHistory.at(-1)?.gravity == null;
+  const gravity = calibrationPending ? "—" : calibratedLastGravity != null ? formatGravity(calibratedLastGravity, units.gravity) :
+    readingSource === "connected" && sample?.gravity != null ? formatGravity(sample.gravity, units.gravity) :
+      recentBroadcast && broadcast?.reading.gravity != null ? formatGravity(broadcast.reading.gravity, units.gravity) :
+        lastGravity != null ? formatGravity(lastGravity, units.gravity) : "—";
   const lastSeenAt = Math.max(lastRead?.getTime() ?? 0, broadcast?.at.getTime() ?? 0, pill.readAt ?? 0, history[history.length - 1]?.at ?? 0);
   const firmwareVersion = connected ? config?.firmware_version : pill.firmwareVersion;
   const runningSlot = connected ? config?.running_slot : pill.config?.running_slot;
@@ -464,6 +537,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       <Dropdown trigger={["click"]} menu={{ items: [
         ...(!connected ? [{ key: "connect", label: "Connect", icon: <LinkOutlined /> }] : []),
         { key: "settings", label: "Settings", icon: <SettingOutlined /> },
+        { key: "calibration", label: "Calibration", icon: <ExperimentOutlined /> },
         ...(connected ? [
           { key: "refresh", label: "Refresh readings", icon: <ReloadOutlined /> },
           { key: "disconnect", label: "Disconnect", icon: <DisconnectOutlined /> }
@@ -471,6 +545,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       ], onClick: ({ key }) => {
         if (key === "connect") { if (device) void connect(); else onChoose(); }
         if (key === "settings") setSettingsOpen(true);
+        if (key === "calibration") setCalibrationOpen(true);
         if (key === "refresh") void refresh();
         if (key === "disconnect") client?.disconnect();
       } }}>
@@ -481,13 +556,14 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       <Alert className="firmware-banner" type="info" showIcon title={siteFirmware.state === "newer" ? `Firmware v${siteFirmware.version} is available` : `A different v${siteFirmware.version} firmware build is available`} action={<Button type="link" onClick={() => setUpdateOpen(true)} disabled={!device}>Update</Button>} /> :
       release?.state === "newer" && <Alert className="firmware-banner" type="info" showIcon title={`GitHub release ${release.version} is available`} action={<a href={release.url} target="_blank" rel="noopener noreferrer">View release</a>} />}
     {feedback && <Alert className="card-feedback" type={feedback.tone} showIcon title={feedback.message} />}
-    <PillHistory readings={history} period={historyPeriod} onPeriodChange={setHistoryPeriod} loading={historyLoading} error={historyError} units={units} summary={<div className="pill-readings">
+    <PillHistory readings={calibratedHistory} period={historyPeriod} onPeriodChange={setHistoryPeriod} loading={historyLoading} error={historyError} units={units} summary={<div className="pill-readings">
       <div><Tooltip title="Temperature"><HeatMapOutlined aria-label="Temperature" /></Tooltip><strong>{temperature}</strong></div>
-      <div><Tooltip title={gravity === "—" ? sample?.version === 1 ? "Connected gravity requires a firmware update." : "Gravity needs a valid floating angle; standing upright is for waking the Pill." : "Gravity"}><ExperimentOutlined aria-label="Gravity" /></Tooltip><strong>{gravity}</strong></div>
+      <div><Tooltip title={calibrationPending ? "Calibration needs more reference points." : gravity === "—" ? sample?.version === 1 ? "Connected gravity requires a firmware update." : "Gravity needs a valid floating angle; standing upright is for waking the Pill." : "Gravity"}><ExperimentOutlined aria-label="Gravity" /></Tooltip><strong>{gravity}</strong></div>
       <div><Tooltip title="Battery"><ThunderboltOutlined aria-label="Battery" /></Tooltip><strong>{battery}</strong></div>
     </div>} />
     {updateOpen && <FirmwareUpdateModal name={name} config={firmwareIdentity} connected={connected} reconnecting={!!reconnectAfterUpdate} onClose={() => setUpdateOpen(false)} onInstall={installUpdate} />}
-    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory} /> :
+    {calibrationOpen && <CalibrationModal open name={name} storageId={profileStorageId} historyId={profileServiceId} readKey={profileServiceId ? loadReadKey(profileServiceId) : null} controlKey={profileServiceId ? loadControlKey(profileServiceId) : null} readings={history} onClose={() => setCalibrationOpen(false)} onChange={profileChanged} />}
+    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} historyControlKey={loadControlKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory} /> :
       <Modal open title={`Settings · ${name}`} onCancel={() => setSettingsOpen(false)} footer={null}>
         <p className="muted">Connect to your Pill to view or change its settings.</p>
         <Button type="primary" onClick={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} loading={busy === "connecting"}>Connect to Pill</Button>

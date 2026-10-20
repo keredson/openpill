@@ -1,4 +1,5 @@
 const PREFIX = "openpill.history.read.v1.";
+const CONTROL_PREFIX = "openpill.history.control.v1.";
 
 function validSecret(value: string): boolean {
   try {
@@ -21,6 +22,23 @@ export function loadReadKey(historyId: string): string | null {
     const value = localStorage.getItem(PREFIX + historyId);
     return value && validSecret(value) ? value : null;
   } catch { return null; }
+}
+
+export function loadControlKey(historyId: string): string | null {
+  if (!/^[0-9a-f]{64}$/.test(historyId)) return null;
+  try {
+    const value = localStorage.getItem(CONTROL_PREFIX + historyId);
+    return value && validSecret(value) ? value : null;
+  } catch { return null; }
+}
+
+export function saveControlKey(historyId: string, secret: string): void {
+  if (!/^[0-9a-f]{64}$/.test(historyId) || !validSecret(secret)) throw new Error("Invalid control key.");
+  localStorage.setItem(CONTROL_PREFIX + historyId, secret);
+}
+
+export function forgetControlKey(historyId: string): void {
+  localStorage.removeItem(CONTROL_PREFIX + historyId);
 }
 
 export function saveReadKey(historyId: string, secret: string): void {

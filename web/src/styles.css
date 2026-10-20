@@ -160,6 +160,9 @@ h3 { font-size: 18px; font-weight: 680; }
 .settings-post-control > .ant-input { min-width: 0; flex: 1; }
 .settings-test-result.ant-alert { margin-bottom: 12px; }
 .settings-example-payload { overflow-x: auto; padding: 14px; border-radius: 8px; background: var(--surface, #f5f5f5); font-size: 12px; line-height: 1.5; }
+.calibration-modal label { display: block; margin: 12px 0; font-size: 13px; font-weight: 600; }
+.calibration-modal label .ant-input { display: block; margin-top: 5px; }
+.calibration-modal section { border-top: 1px solid var(--line); padding-top: 12px; }
 .interval-settings-control { display: inline-flex; align-items: center; gap: 7px; flex: none; font-size: 13px; }
 .interval-settings-control .ant-select { width: 140px; }
 .settings-firmware p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }

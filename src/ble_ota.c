@@ -21,6 +21,7 @@
 #include "host/util/util.h"
 #include "hardware.h"
 #include "history_identity.h"
+#include "openpill_calibration.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/platform_util.h"
 #include "nimble/nimble_port.h"
@@ -689,6 +690,7 @@ static void reset_history_task(void *unused)
     config.history_read_hash[0] = '\0';
     esp_err_t error = app_config_commit(&config);
     if (error == ESP_OK) error = history_identity_reset();
+    if (error == ESP_OK) openpill_calibration_clear();
     set_config_status(error == ESP_OK ? CONFIG_STATE_SAVED : CONFIG_STATE_ERROR,
                       error == ESP_OK ? "New history identity ready" :
                                         "Could not reset history identity");
@@ -916,6 +918,17 @@ static int secure_dispatch(const uint8_t *request, size_t length,
     }
     case 5:
         return length == 1 ? start_wifi_scan() : BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    case 6: {
+        if (length != 65 || !history_identity_ready()) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+        static const uint8_t prefix[] = "OpenPill history control v1";
+        uint8_t input[sizeof(prefix) + 64], digest[32];
+        memcpy(input, prefix, sizeof(prefix));
+        memcpy(input + sizeof(prefix), request + 1, 64);
+        if (mbedtls_sha256(input, sizeof(input), digest, 0) != 0 ||
+            history_identity_sign(digest, response, response_length) != ESP_OK)
+            return BLE_ATT_ERR_UNLIKELY;
+        return 0;
+    }
     default:
         return BLE_ATT_ERR_REQ_NOT_SUPPORTED;
     }

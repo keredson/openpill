@@ -74,11 +74,58 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   const cursor = result.headers.get('x-next-after');
   assert.match(cursor, /^\d+$/);
   assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()).byteLength, 0);
+  const controlKey = crypto.randomBytes(32);
+  const controlHash = crypto.createHash('sha256').update(controlKey).digest();
+  const profileUrl = `${base}/v1/profiles/${historyId}`;
+  const initial = await fetch(profileUrl, {headers: auth});
+  assert.equal(initial.status, 200);
+  assert.equal(initial.headers.get('etag'), '"0"');
+  const profile = {version: 1, profiles: [{id: crypto.randomBytes(16).toString('hex'),
+    startsAt: Date.now() - 60_000, massG: 121, points: [{at: Date.now(), sg: 1.05, angle: null}],
+    curve: Array(91).fill(10500)}]};
+  const put = (key, revision) => fetch(profileUrl, {method: 'PUT', headers: {
+    Authorization: `Bearer ${key.toString('base64url')}`, 'If-Match': `"${revision}"`,
+    'Content-Type': 'application/json'}, body: JSON.stringify(profile)});
+  assert.equal((await put(readKey, 0)).status, 403);
+  const challengeResponse = await fetch(`${base}/v1/control/${historyId}`, {headers: auth});
+  assert.equal(challengeResponse.status, 200);
+  const nonce = (await challengeResponse.json()).nonce;
+  assert.match(nonce, /^[0-9a-f]{64}$/);
+  const forgedClaim = await fetch(`${base}/v1/control/${historyId}`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      hash: controlHash.toString('hex'), nonce, signature: crypto.randomBytes(70).toString('base64url')})});
+  assert.equal(forgedClaim.status, 401);
+  const claimSignature = crypto.sign('sha256',
+    Buffer.concat([Buffer.from('OpenPill history control v1\0'), controlHash, Buffer.from(nonce, 'hex')]), privateKey);
+  const claim = await fetch(`${base}/v1/control/${historyId}`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      hash: controlHash.toString('hex'), nonce, signature: claimSignature.toString('base64url')})});
+  assert.equal(claim.status, 204);
+  const replay = await fetch(`${base}/v1/control/${historyId}`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+      hash: controlHash.toString('hex'), nonce, signature: claimSignature.toString('base64url')})});
+  assert.equal(replay.status, 409);
+  assert.equal((await put(controlKey, 0)).status, 204);
+  assert.equal((await put(controlKey, 0)).status, 409);
+  const savedProfile = await fetch(profileUrl, {headers: auth});
+  assert.equal(savedProfile.headers.get('etag'), '"1"');
+  assert.deepEqual(await savedProfile.json(), profile);
+  const reply = await upload();
+  assert.equal(reply.status, 429);
+  const curveReply = Buffer.from(await reply.arrayBuffer());
+  assert.equal(curveReply.length, 186);
+  assert.equal(curveReply.subarray(0, 4).toString(), 'OPC1');
+  assert.equal(curveReply.readUInt16BE(4), 10500);
   await stop();
   await start();
   result = await fetch(`${base}/v1/history/${historyId}?after=0`, {headers: auth});
   const persisted = Buffer.from(await result.arrayBuffer());
   assert.equal(persisted.length, 33);
   assert.deepEqual(persisted.subarray(8), body);
+  const retainedProfile = await fetch(`${base}/v1/profiles/${historyId}`, {headers: auth});
+  assert.deepEqual(await retainedProfile.json(), profile);
+  const afterRestart = await upload();
+  assert.equal(afterRestart.status, 429);
+  assert.equal(Buffer.from(await afterRestart.arrayBuffer()).readUInt16BE(4), 10500);
   await stop();
 });

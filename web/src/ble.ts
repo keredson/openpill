@@ -26,6 +26,16 @@ export interface BroadcastReading {
   temperatureC: number | null;
   gravity: number | null;
   batteryPercent: number;
+  acceleration?: [number, number, number];
+}
+
+function packetAcceleration(data: DataView, offset: number): [number, number, number] | undefined {
+  const values: [number, number, number] = [
+    data.getInt16(offset, false) / 16,
+    data.getInt16(offset + 2, false) / 16,
+    data.getInt16(offset + 4, false) / 16
+  ];
+  return Math.hypot(...values) >= 500 ? values : undefined;
 }
 
 function parseSpecificGravity(value: number): number | null {
@@ -43,7 +53,7 @@ export function parseBroadcast(event: BluetoothAdvertisingEvent): BroadcastReadi
   const temperatureC = encodedTemperature ? encodedTemperature / 128 - 273.15 : null;
   const gravity = parseSpecificGravity(encodedGravity);
   const batteryPercent = Math.max(0, Math.min(100, data.getInt16(21, false) / 256));
-  return { temperatureC, gravity, batteryPercent };
+  return { temperatureC, gravity, batteryPercent, acceleration: packetAcceleration(data, 15) };
 }
 
 export function parseTelemetry(data: DataView): BroadcastReading | null {
@@ -54,7 +64,8 @@ export function parseTelemetry(data: DataView): BroadcastReading | null {
   return {
     temperatureC,
     gravity: parseSpecificGravity(data.getFloat32(13, false)),
-    batteryPercent: Math.max(0, Math.min(100, data.getInt16(23, false) / 256))
+    batteryPercent: Math.max(0, Math.min(100, data.getInt16(23, false) / 256)),
+    acceleration: packetAcceleration(data, 17)
   };
 }
 
@@ -571,6 +582,16 @@ export class OpenPillClient {
   async resetHistory(onStatus: (status: ConfigStatus) => void) {
     if (!this.secure) throw new Error("Update the Pill firmware before resetting its history identity.");
     await this.applyConfig(5, 30, onStatus);
+  }
+
+  async signHistoryControl(hashHex: string, nonceHex: string): Promise<string> {
+    if (!this.secure || !/^[0-9a-f]{64}$/.test(hashHex) || !/^[0-9a-f]{64}$/.test(nonceHex))
+      throw new Error("Update the Pill firmware before enabling calibration control.");
+    const data = Uint8Array.from((hashHex + nonceHex).match(/../g)!, (pair) => Number.parseInt(pair, 16));
+    const signature = await this.secure.send(6, data);
+    if (signature.length < 64 || signature.length > 80)
+      throw new Error("Invalid Pill control signature.");
+    return btoa(String.fromCharCode(...signature)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
   }
 
   async testPost(endpointUrl: string, allowHttp: boolean, wifiTimeoutSeconds: number, onStatus: (status: ConfigStatus) => void) {
