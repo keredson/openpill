@@ -364,11 +364,11 @@ float vendor_calibration_gravity(float angle_degrees)
     return default_gravity(angle_degrees);
 }
 
-uint16_t vendor_calibration_battery_mv(int16_t adc_raw)
+uint16_t vendor_calibration_battery_mv(int16_t adc_raw_10bit)
 {
     float adc_cal = calibration.battery_valid ? calibration.adc_calibration : 0.0f;
     float millivolts =
-        (1.4f + (adc_cal - (float)adc_raw) * 0.00078125f) * 3000.0f;
+        (1.4f + (adc_cal - (float)adc_raw_10bit) * 0.00078125f) * 3000.0f;
     if (millivolts <= 0.0f) {
         return 0;
     }

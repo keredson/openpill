@@ -11,5 +11,5 @@ esp_err_t vendor_calibration_load(void);
 bool vendor_calibration_has_gravity(void);
 bool vendor_calibration_has_battery(void);
 float vendor_calibration_gravity(float angle_degrees);
-uint16_t vendor_calibration_battery_mv(int16_t adc_raw);
+uint16_t vendor_calibration_battery_mv(int16_t adc_raw_10bit);
 

@@ -129,7 +129,7 @@ did not include the gravity field:
 | 8 | `i16` | Z acceleration in mg |
 | 10 | `i16` | Temperature in hundredths Celsius |
 | 12 | `i16` | Signed high byte of auxiliary ADC2; battery input under investigation |
-| 14 | `u16` | Battery millivolts calculated from ADC2; currently unreliable on the test Pill |
+| 14 | `u16` | Battery millivolts calculated from all 10 ADC2 bits; conversion still being validated against a meter |
 | 16 | `float32` | Calibrated specific gravity (NaN if acceleration is unavailable) |
 
 The 11-byte ADC diagnostics record is little-endian. Byte 0 is version `1`;

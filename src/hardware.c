@@ -297,11 +297,11 @@ esp_err_t hardware_read(hardware_sample_t *sample)
             ++adc_samples;
         }
         if (adc_samples == LIS3DH_BATTERY_SAMPLES) {
-            /* The sample protocol carries the signed ADC2 high byte. Average
-             * the four 10-bit readings before reducing to that resolution. */
-            int16_t raw = (int16_t)(adc_sum / (LIS3DH_BATTERY_SAMPLES * 4));
-            sample->battery_adc_raw = raw;
-            sample->battery_mv = vendor_calibration_battery_mv(raw);
+            /* Keep all 10 ADC bits for voltage conversion. The sample protocol
+             * carries only the signed high byte for compatibility. */
+            int16_t raw_10bit = (int16_t)(adc_sum / LIS3DH_BATTERY_SAMPLES);
+            sample->battery_adc_raw = raw_10bit >> 2;
+            sample->battery_mv = vendor_calibration_battery_mv(raw_10bit);
             sample->valid |= HARDWARE_VALID_BATTERY |
                              HARDWARE_VALID_BATTERY_FRESH;
         } else {
@@ -311,9 +311,9 @@ esp_err_t hardware_read(hardware_sample_t *sample)
             if (i2c_read(LIS3DH_ADDRESS,
                          LIS3DH_OUT_ADC2_L | LIS3DH_AUTO_INCREMENT,
                          adc, sizeof(adc)) == ESP_OK) {
-                int16_t raw = (int8_t)adc[1];
-                sample->battery_adc_raw = raw;
-                sample->battery_mv = vendor_calibration_battery_mv(raw);
+                int16_t raw_10bit = read_le_i16(adc) >> 6;
+                sample->battery_adc_raw = (int8_t)adc[1];
+                sample->battery_mv = vendor_calibration_battery_mv(raw_10bit);
                 sample->valid |= HARDWARE_VALID_BATTERY;
             }
             if (!(sample->valid & HARDWARE_VALID_ACCEL) &&

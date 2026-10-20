@@ -120,6 +120,15 @@ meter read 3.65 V at the battery terminals with the charger connected. The
 voltage conversion currently reads 0.187 V high at that point; more circuit
 and ADC checks are needed before adjusting its calibration.
 
+The divider junction subsequently measured 1.13 V while the battery terminals
+measured 3.65 V, a ratio of about 3.23:1. The LIS3DH reports a left-aligned
+10-bit ADC value, but the voltage conversion had been receiving only its
+signed high byte. It now receives the averaged full 10-bit value, while the
+BLE sample retains the high byte for protocol compatibility. After installing
+that correction, a BLE read with the charger disconnected reported 3.586 V
+with ADC2 high byte `32` and a separate three-channel ADC2 reading of `138`.
+A fresh meter comparison in the same charger state is still needed.
+
 ## LEDs
 
 - The one confirmed MCU-controlled status LED is on GPIO18. It is active-low;
