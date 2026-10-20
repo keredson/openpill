@@ -93,6 +93,12 @@ battery terminals. A contemporaneous BLE reading reported ADC1/ADC2/ADC3 as
 `-296/-508/-231` and battery as 4.189 V / 100%, an error of +0.619 V against
 the meter. ADC2 was still fixed at its negative limit.
 
+With the battery terminals later at 3.64 V and the charger connected, two
+consecutive BLE diagnostics reported ADC1/ADC2/ADC3 as `-508/-508/-310` and
+`-508/-508/-508`. Both still reported 4.189 V / 100% battery. All three
+auxiliary ADC channels can therefore reach the same near-limit value; this
+observation alone does not identify a defective ADC2 input or a divider fault.
+
 ## LEDs
 
 - The one confirmed MCU-controlled status LED is on GPIO18. It is active-low;
