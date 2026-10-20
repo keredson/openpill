@@ -72,6 +72,15 @@ voltage rises; ADC3 does not move consistently. That correlation does not yet
 identify the battery divider's physical connection. Measure the divider node
 and the LIS3DH input path before changing the selected channel or conversion.
 
+With the battery terminals at 3.57 V, a meter read 3.56 V at R1's left pad,
+3.18 V at the R1-right/R2-left junction, and 3.29 V at R2's right pad (all
+relative to ground). These points do not show a simple two-resistor divider
+from the battery to ground. The junction being below both outer pads also
+means the readings alone cannot establish a passive series circuit; other
+connections, circuit state, or measurement timing matter. Neither R1/R2 pad
+shows the approximately 1.2 V input expected of a 3:1 battery divider. A
+matching BLE ADC reading was unavailable because the Pill was not advertising.
+
 ## LEDs
 
 - The one confirmed MCU-controlled status LED is on GPIO18. It is active-low;
