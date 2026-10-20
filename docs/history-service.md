@@ -4,7 +4,7 @@ OpenPill history is optional. Configuring Wi-Fi leaves uploads off. In Pill
 settings, choose **OpenPill history (free)** and save to opt in. The Pill must
 report no more often than every 15 minutes. Bluetooth readings continue to be
 stored locally by the PWA. When a history read key is present, the PWA fetches
-only server readings after its latest saved server timestamp. It shows Bluetooth
+only server events after its latest saved server timestamp. It shows Bluetooth
 and server readings together and hides a server reading that matches a nearby
 local reading.
 
@@ -18,7 +18,7 @@ read key means losing access to the existing server history. **Start new
 history** in Pill settings rotates its signing identity and read key binding;
 old history expires normally and cannot be recovered with the new key.
 
-## Protocol v1
+## Upload protocol v1 and history sync v2
 
 `POST /v1/readings` uses `Content-Type: application/octet-stream` and an
 exactly 25-byte body containing the complete BLE manufacturer value, including
@@ -37,10 +37,14 @@ receipt timestamp; Pill wall-clock time and sequence numbers are unnecessary.
 
 `GET /v1/history/<history-id>?after=<microseconds>` requires
 `Authorization: Bearer <base64url-read-key>`. It returns up to 1024 chronological
-records as `application/vnd.openpill.history-v1`. Each record is an unsigned
-8-byte big-endian Unix microsecond timestamp followed by the 25-byte body.
-`X-Next-After` gives the next cursor. A successful empty response has zero
-body bytes. The PWA saves pages in IndexedDB before advancing its cursor.
+events as `application/vnd.openpill.history-v2`. Each event has an unsigned
+8-byte big-endian Unix microsecond server timestamp, a one-byte type, a
+two-byte big-endian payload length, then the payload. Type 0 carries the
+unchanged 25-byte reading. Type 1 carries a four-byte big-endian profile
+revision followed by the full UTF-8 JSON profile document. `X-Record-Count`
+reports the number of events and `X-Next-After` the last timestamp. The PWA
+saves one cursor for both event types in IndexedDB after applying the page.
+An empty response has zero body bytes.
 
 ## Calibration profiles
 
@@ -59,16 +63,21 @@ without measured mass, it fixes length at 125 mm and fits effective mass. The
 physical fit should be checked against reference gravities spread across the
 intended range. The housing contour has not been measured precisely.
 
-`pills.sqlite` holds the profile document in a `profiles` table keyed to the
-Pill's metadata row. Daily SQLite files continue to contain readings only.
+`pills.sqlite` holds the current profile document and revision in a `profiles`
+table keyed to the Pill's metadata row. Daily SQLite files have separate
+`readings` and `profile_events` tables, both indexed by Pill and server timestamp.
+History sync merges the two tables by timestamp. Profile changes are full
+documents so the PWA can replace its local copy and recalculate historical
+gravity. When a profile event has aged out with its daily file, a new phone
+receives the current document from the metadata snapshot on its first sync.
 `GET /v1/profiles/<history-id>` uses the read key and returns a versioned JSON
 document with an `ETag` revision. `PUT` uses a separate control key, requires
 `If-Match` with the last revision, and is limited to 16 KiB, 16 profiles, and
 16 reference points per profile. The PWA caches profiles locally and retries a
-local pending change when it next syncs. On later syncs it sends `If-None-Match`;
-an unchanged revision returns HTTP 304 from the server's in-memory metadata
-without a profile SQLite read or document transfer. The PWA applies the profile
-to historical raw tilt readings locally; the server does not calculate gravity.
+local pending change when it next syncs. Normal history sync delivers profile
+changes without a separate profile GET. The profile GET remains available for
+editing and conflict resolution. The PWA applies profiles to historical raw
+tilt readings locally; the server does not calculate gravity.
 
 To bind or rotate a control key, a phone with physical Bluetooth access gets a
 five-minute, one-use challenge from `GET /v1/control/<history-id>` using the read
@@ -106,8 +115,9 @@ local Vite development; override with `OPENPILL_ORIGINS` if the PWA moves.
 Protect the public endpoint with Cloudflare rate limiting because each newly
 generated signing key can start a new history.
 
-The SQLite worker keeps Pill metadata and calibration profiles in `pills.sqlite` and readings in one
-SQLite file per UTC day, keyed by a small integer Pill ordinal and timestamp.
+The SQLite worker keeps Pill metadata and current calibration profiles in
+`pills.sqlite`; readings and profile events live in one SQLite file per UTC day,
+keyed by a small integer Pill ordinal and timestamp.
 Writes are grouped in RAM and committed every minute. A daily sweep
 removes whole day files older than 90 days and old Pill metadata. An active
 day's file uses WAL; the worker checkpoints it periodically. The 90-day limit

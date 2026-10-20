@@ -33,6 +33,7 @@ const waiting = new Map();
 let nextRequestId = 1;
 let queued = [];
 let inFlight = null;
+let flushPromise = null;
 let healthy = true;
 let workerAlive = true;
 
@@ -50,7 +51,8 @@ const ready = new Promise((resolve, reject) => {
       for (const row of message.loaded) registry.set(row.key, {
         publicKey: Buffer.from(row.publicKey), readHash: Buffer.from(row.readHash),
         controlHash: row.controlHash ? Buffer.from(row.controlHash) : null, lastUs: row.lastUs,
-        curveReply: encodeCurve(row.curve), profileRevision: row.profileRevision
+        curveReply: encodeCurve(row.curve),
+        eventUs: Math.max(row.lastUs, row.profileUs)
       });
       resolve();
       return;
@@ -80,20 +82,25 @@ worker.on('exit', (code) => {
 });
 
 async function flush() {
-  if (inFlight || !queued.length || !workerAlive) return;
+  if (flushPromise) return flushPromise;
+  if (!queued.length || !workerAlive) return;
   const rows = queued;
   queued = [];
   inFlight = rows;
-  try {
-    await storeRequest('insert', {rows});
-    inFlight = null;
-    healthy = true;
-  } catch (error) {
-    console.error('SQLite batch failed:', error);
-    queued = rows.concat(queued);
-    inFlight = null;
-    healthy = false;
-  }
+  flushPromise = (async () => {
+    try {
+      await storeRequest('insert', {rows});
+      healthy = true;
+    } catch (error) {
+      console.error('SQLite batch failed:', error);
+      queued = rows.concat(queued);
+      healthy = false;
+    } finally {
+      inFlight = null;
+      flushPromise = null;
+    }
+  })();
+  return flushPromise;
 }
 
 function respond(res, status, body = '', headers = {}) {
@@ -108,7 +115,7 @@ function cors(req, res) {
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-Match, If-None-Match');
-    res.setHeader('Access-Control-Expose-Headers', 'X-Next-After, ETag');
+    res.setHeader('Access-Control-Expose-Headers', 'X-Next-After, X-Record-Count, ETag');
   }
   return !origin || ORIGINS.has(origin);
 }
@@ -167,12 +174,12 @@ async function upload(req, res) {
       'Retry-After': String(Math.max(1, retry)), 'Content-Type': 'application/vnd.openpill.calibration-v1'
     });
   }
-  const us = Math.max(now * 1000, (pill?.lastUs || 0) + 1);
+  const us = Math.max(now * 1000, (pill?.lastUs || 0) + 1, (pill?.eventUs || 0) + 1);
   if (!pill) {
     pill = {publicKey: publicBytes, readHash, controlHash: null,
-      curveReply: CLEAR_CALIBRATION, profileRevision: 0, lastUs: us};
+      curveReply: CLEAR_CALIBRATION, eventUs: us, lastUs: us};
     registry.set(id, pill);
-  } else pill.lastUs = us;
+  } else { pill.lastUs = us; pill.eventUs = us; }
   queued.push({key: id, publicKey: publicBytes, readHash, us, message: body});
   respond(res, 202, calibrationReply(pill), {'Content-Type': 'application/vnd.openpill.calibration-v1'});
 }
@@ -196,16 +203,24 @@ async function history(req, res, url) {
   const after = Number(rawAfter);
   if (!Number.isSafeInteger(after)) return respond(res, 400);
   if (!healthy) return respond(res, 503);
+  if (pill.profilePending) await pill.profilePending;
   let records;
   try { records = await storeRequest('read', {key: id, after, limit: PAGE_LIMIT}); }
   catch { return respond(res, 503); }
-  const response = Buffer.allocUnsafe(records.length * 33);
-  for (let index = 0; index < records.length; index++) {
-    response.writeBigUInt64BE(BigInt(records[index].us), index * 33);
-    Buffer.from(records[index].message).copy(response, index * 33 + 8);
-  }
+  const frames = records.map((record) => {
+    const payload = record.type === 'reading' ? Buffer.from(record.message) :
+      Buffer.concat([Buffer.alloc(4), Buffer.from(record.body, 'utf8')]);
+    if (record.type === 'profile') payload.writeUInt32BE(record.revision);
+    const frame = Buffer.allocUnsafe(11 + payload.length);
+    frame.writeBigUInt64BE(BigInt(record.us), 0);
+    frame.writeUInt8(record.type === 'reading' ? 0 : 1, 8);
+    frame.writeUInt16BE(payload.length, 9);
+    payload.copy(frame, 11);
+    return frame;
+  });
   const next = records.length ? records.at(-1).us : after;
-  respond(res, 200, response, {'Content-Type': 'application/vnd.openpill.history-v1', 'X-Next-After': String(next)});
+  respond(res, 200, Buffer.concat(frames), {'Content-Type': 'application/vnd.openpill.history-v2',
+    'X-Next-After': String(next), 'X-Record-Count': String(records.length)});
 }
 
 function bearerHash(req) {
@@ -299,12 +314,14 @@ async function profiles(req, res, url) {
   if (!expectedHash || !crypto.timingSafeEqual(hash, expectedHash)) return respond(res, 403);
   if (!healthy) return respond(res, 503);
   if (req.method === 'GET') {
-    const etag = `"${pill.profileRevision}"`;
-    if (req.headers['if-none-match'] === etag) return respond(res, 304, '', {ETag: etag});
     const saved = await storeRequest('getProfiles', {key: id});
-    return saved ? respond(res, 200, saved.body, {'Content-Type': 'application/json', ETag: `"${saved.revision}"`}) : respond(res, 404);
+    if (!saved) return respond(res, 404);
+    const etag = `"${saved.revision}"`;
+    if (req.headers['if-none-match'] === etag) return respond(res, 304, '', {ETag: etag});
+    return respond(res, 200, saved.body, {'Content-Type': 'application/json', ETag: etag});
   }
   if (req.method !== 'PUT') return respond(res, 405);
+  if (pill.profilePending) await pill.profilePending;
   const ifMatch = /^"(0|[1-9][0-9]*)"$/.exec(req.headers['if-match'] || '');
   if (!ifMatch) return respond(res, 428);
   let size = 0;
@@ -318,13 +335,26 @@ async function profiles(req, res, url) {
   try { document = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { return respond(res, 400); }
   if (!validProfiles(document)) return respond(res, 400);
-  const result = await storeRequest('saveProfiles', {
-    key: id, expected: Number(ifMatch[1]), body: JSON.stringify(document)
-  });
+  const eventUs = Math.max(Date.now() * 1000, pill.eventUs + 1);
+  pill.eventUs = eventUs;
+  const pending = (async () => {
+    while ((inFlight && inFlight.some((row) => row.key === id && row.us < eventUs)) ||
+        queued.some((row) => row.key === id && row.us < eventUs)) {
+      await flush();
+      if (!healthy) throw new Error('Could not flush readings before profile change');
+    }
+    if (!healthy) throw new Error('Could not flush readings before profile change');
+    return storeRequest('saveProfiles', {
+      key: id, expected: Number(ifMatch[1]), body: JSON.stringify(document), us: eventUs
+    });
+  })();
+  pill.profilePending = pending;
+  let result;
+  try { result = await pending; }
+  finally { if (pill.profilePending === pending) pill.profilePending = null; }
   if (!result) return respond(res, 404);
   if (result.conflict) return respond(res, 409, '', {ETag: `"${result.revision}"`});
   pill.curveReply = encodeCurve(document.profiles.at(-1)?.curve);
-  pill.profileRevision = result.revision;
   respond(res, 204, '', {ETag: `"${result.revision}"`});
 }
 

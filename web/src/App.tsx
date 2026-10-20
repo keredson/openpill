@@ -63,7 +63,7 @@ export default function App() {
   function forgetPill(id: string) {
     const removed = pills.find((pill) => pill.id === id);
     setPills((current) => current.filter((item) => item.id !== id));
-    void deleteReadings(id).catch(() => {});
+    void deleteReadings(id, removed?.historyId).catch(() => {});
     forgetProfiles(id);
     if (removed?.historyId && !pills.some((pill) => pill.id !== id && pill.historyId === removed.historyId))
       { forgetReadKey(removed.historyId); forgetControlKey(removed.historyId); forgetProfiles(removed.historyId); }

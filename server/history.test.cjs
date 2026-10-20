@@ -6,7 +6,21 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
+const {DatabaseSync} = require('node:sqlite');
 const {test} = require('node:test');
+
+function decodeEvents(bytes) {
+  const events = [];
+  for (let offset = 0; offset < bytes.length;) {
+    const us = Number(bytes.readBigUInt64BE(offset));
+    const type = bytes.readUInt8(offset + 8);
+    const length = bytes.readUInt16BE(offset + 9);
+    const payload = bytes.subarray(offset + 11, offset + 11 + length);
+    events.push({us, type, payload});
+    offset += 11 + length;
+  }
+  return events;
+}
 
 test('signed upload, private sync, durable storage, and rate limit', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'openpill-history-'));
@@ -67,7 +81,7 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   let result;
   for (let tries = 0; tries < 30; tries++) {
     result = await fetch(historyUrl, {headers: auth});
-    if ((await result.arrayBuffer()).byteLength === 33) break;
+    if ((await result.arrayBuffer()).byteLength === 36) break;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(result.status, 200);
@@ -112,6 +126,13 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   assert.equal(savedProfile.headers.get('etag'), '"1"');
   assert.deepEqual(await savedProfile.json(), profile);
   assert.equal((await fetch(profileUrl, {headers: {...auth, 'If-None-Match': '"1"'}})).status, 304);
+  const eventsAfterReading = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()));
+  assert.equal(eventsAfterReading.length, 1);
+  assert.equal(eventsAfterReading[0].type, 1);
+  assert.ok(eventsAfterReading[0].us > Number(cursor));
+  assert.equal(eventsAfterReading[0].payload.readUInt32BE(0), 1);
+  assert.deepEqual(JSON.parse(eventsAfterReading[0].payload.subarray(4).toString()), profile);
+  assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${eventsAfterReading[0].us}`, {headers: auth})).arrayBuffer()).byteLength, 0);
   const reply = await upload();
   assert.equal(reply.status, 429);
   const curveReply = Buffer.from(await reply.arrayBuffer());
@@ -122,13 +143,38 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   await start();
   result = await fetch(`${base}/v1/history/${historyId}?after=0`, {headers: auth});
   const persisted = Buffer.from(await result.arrayBuffer());
-  assert.equal(persisted.length, 33);
-  assert.deepEqual(persisted.subarray(8), body);
+  const restoredEvents = decodeEvents(persisted);
+  assert.equal(restoredEvents.length, 2);
+  assert.equal(restoredEvents[0].type, 0);
+  assert.deepEqual(restoredEvents[0].payload, body);
+  assert.equal(restoredEvents[1].type, 1);
   const retainedProfile = await fetch(`${base}/v1/profiles/${historyId}`, {headers: auth});
   assert.deepEqual(await retainedProfile.json(), profile);
   assert.equal((await fetch(`${base}/v1/profiles/${historyId}`, {headers: {...auth, 'If-None-Match': '"1"'}})).status, 304);
   const afterRestart = await upload();
   assert.equal(afterRestart.status, 429);
   assert.equal(Buffer.from(await afterRestart.arrayBuffer()).readUInt16BE(4), 10500);
+  await stop();
+  const daily = fs.readdirSync(directory).find((name) => /^day-\d{8}\.sqlite$/.test(name));
+  assert.ok(daily);
+  const dayDb = new DatabaseSync(path.join(directory, daily));
+  dayDb.exec('DELETE FROM profile_events');
+  dayDb.close();
+  await start();
+  const recoveredEvent = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()));
+  assert.equal(recoveredEvent.length, 1);
+  assert.equal(recoveredEvent[0].type, 1);
+  assert.deepEqual(JSON.parse(recoveredEvent[0].payload.subarray(4).toString()), profile);
+  await stop();
+  const metaDb = new DatabaseSync(path.join(directory, 'pills.sqlite'));
+  metaDb.exec('UPDATE profiles SET updated_us=1');
+  metaDb.close();
+  await start();
+  const restoredFromSnapshot = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=0`, {headers: auth})).arrayBuffer()));
+  assert.equal(restoredFromSnapshot.length, 2);
+  assert.equal(restoredFromSnapshot[0].type, 1);
+  assert.deepEqual(JSON.parse(restoredFromSnapshot[0].payload.subarray(4).toString()), profile);
+  assert.equal(restoredFromSnapshot[1].type, 0);
+  assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${restoredFromSnapshot[1].us}`, {headers: auth})).arrayBuffer()).byteLength, 0);
   await stop();
 });

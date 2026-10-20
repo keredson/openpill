@@ -132,10 +132,11 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       if (!active || syncing || document.visibilityState !== "visible") return;
       syncing = true;
       try {
-        const count = await syncServerHistory(pill.id, historyId, key);
-        if (active && count) setHistoryRevision((current) => current + 1);
+        const result = await syncServerHistory(pill.id, historyId, key);
+        if (active && result.readings) setHistoryRevision((current) => current + 1);
+        if (active && result.profilesChanged) profileChanged();
         const previous = loadProfiles(historyId);
-        const profiles = await syncProfiles(historyId, key, loadControlKey(historyId));
+        const profiles = previous.dirty ? await syncProfiles(historyId, key, loadControlKey(historyId)) : previous;
         if (active && (profiles.revision !== previous.revision || profiles.dirty !== previous.dirty)) profileChanged();
       } catch (error) {
         if (active) setFeedback({ tone: "error", message: error instanceof Error ? error.message : "Could not sync history." });
@@ -342,8 +343,9 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
         historyId: nextConfig.history_id, config: nextConfig });
       if (patch.history_telemetry && nextConfig.history_id) {
         const key = loadReadKey(nextConfig.history_id);
-        if (key) void syncServerHistory(pill.id, nextConfig.history_id, key).then((count) => {
-          if (count) setHistoryRevision((current) => current + 1);
+        if (key) void syncServerHistory(pill.id, nextConfig.history_id, key).then((result) => {
+          if (result.readings) setHistoryRevision((current) => current + 1);
+          if (result.profilesChanged) profileChanged();
         }).catch(() => {});
       }
       setSettingsOpen(false);

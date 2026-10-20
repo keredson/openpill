@@ -22,6 +22,18 @@ export function storeProfiles(historyId: string, saved: SavedProfiles): void {
   localStorage.setItem(PREFIX + historyId, JSON.stringify(saved));
 }
 
+export function applyProfileEvent(historyId: string, revision: number, document: ProfileDocument): boolean {
+  if (!Number.isSafeInteger(revision) || revision < 1 || document.version !== 1 || !Array.isArray(document.profiles))
+    throw new Error("Invalid calibration profile event.");
+  const local = loadProfiles(historyId);
+  if (revision <= local.revision) return false;
+  const next = local.dirty
+    ? { revision, dirty: true, document: mergeDocuments(document, local.document) }
+    : { revision, dirty: false, document };
+  storeProfiles(historyId, next);
+  return true;
+}
+
 export function forgetProfiles(historyId: string): void {
   localStorage.removeItem(PREFIX + historyId);
 }

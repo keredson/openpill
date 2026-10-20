@@ -1,8 +1,11 @@
 import { parseTelemetry, type BroadcastReading, type HardwareSample } from "./ble";
 import { batteryPercentFromMv } from "./battery";
+import { applyProfileEvent } from "./calibrationProfiles";
+import type { ProfileDocument } from "./physicsCalibration";
 
 const DATABASE_NAME = "openpill-readings";
 const STORE_NAME = "readings";
+const SYNC_STORE = "sync_state";
 
 export interface HistoricalReading {
   id?: number;
@@ -25,8 +28,10 @@ let databasePromise: Promise<IDBDatabase> | undefined;
 function database(): Promise<IDBDatabase> {
   if (!databasePromise) {
     databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DATABASE_NAME, 2);
+      const request = indexedDB.open(DATABASE_NAME, 3);
       request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(SYNC_STORE))
+          request.result.createObjectStore(SYNC_STORE, { keyPath: "historyId" });
         const store = request.transaction!.objectStoreNames.contains(STORE_NAME)
           ? request.transaction!.objectStore(STORE_NAME)
           : request.result.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
@@ -118,62 +123,87 @@ export async function loadReadings(pillId: string): Promise<HistoricalReading[]>
   });
 }
 
-async function latestServerUs(pillId: string): Promise<number> {
+async function latestServerUs(pillId: string, historyId: string): Promise<number> {
   const db = await database();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const request = tx.objectStore(STORE_NAME).index("by_pill_server_us")
-      .openCursor(IDBKeyRange.bound([pillId, 0], [pillId, Number.MAX_SAFE_INTEGER]), "prev");
-    request.onsuccess = () => resolve((request.result?.value as HistoricalReading | undefined)?.serverUs ?? 0);
-    request.onerror = () => reject(request.error);
+    const tx = db.transaction([STORE_NAME, SYNC_STORE], "readonly");
+    const state = tx.objectStore(SYNC_STORE).get(historyId);
+    state.onsuccess = () => {
+      if (state.result) { resolve(state.result.after as number); return; }
+      const request = tx.objectStore(STORE_NAME).index("by_pill_server_us")
+        .openCursor(IDBKeyRange.bound([pillId, 0], [pillId, Number.MAX_SAFE_INTEGER]), "prev");
+      request.onsuccess = () => resolve((request.result?.value as HistoricalReading | undefined)?.serverUs ?? 0);
+      request.onerror = () => reject(request.error);
+    };
+    state.onerror = () => reject(state.error);
   });
 }
 
-async function saveServerPage(readings: HistoricalReading[]): Promise<void> {
-  if (!readings.length) return;
+async function saveServerPage(historyId: string, after: number, readings: HistoricalReading[]): Promise<void> {
+  if (!readings.length && !after) return;
   const db = await database();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
+    const tx = db.transaction([STORE_NAME, SYNC_STORE], "readwrite");
     const store = tx.objectStore(STORE_NAME);
     for (const reading of readings) store.add(reading);
+    tx.objectStore(SYNC_STORE).put({historyId, after});
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
 }
 
-export async function syncServerHistory(pillId: string, historyId: string, readKey: string): Promise<number> {
+export async function syncServerHistory(pillId: string, historyId: string, readKey: string): Promise<{readings: number; profilesChanged: boolean}> {
   if (!/^[0-9a-f]{64}$/.test(historyId)) throw new Error("Invalid history ID.");
-  let after = await latestServerUs(pillId);
+  let after = await latestServerUs(pillId, historyId);
   let added = 0;
+  let profilesChanged = false;
   for (;;) {
     const response = await fetch(`https://openpill.yeast.win/v1/history/${historyId}?after=${after}`, {
       headers: { Authorization: `Bearer ${readKey}` }, cache: "no-store"
     });
-    if (response.status === 404 && after === 0) return added;
+    if (response.status === 404 && after === 0) return {readings: added, profilesChanged};
     if (!response.ok) throw new Error(`History sync failed (HTTP ${response.status}).`);
     const bytes = await response.arrayBuffer();
-    if (bytes.byteLength % 33 !== 0) throw new Error("Invalid history response.");
+    if (response.headers.get("Content-Type")?.split(";")[0] !== "application/vnd.openpill.history-v2")
+      throw new Error("Unsupported history response.");
     const view = new DataView(bytes);
     const readings: HistoricalReading[] = [];
-    for (let offset = 0; offset < bytes.byteLength; offset += 33) {
+    let count = 0;
+    for (let offset = 0; offset < bytes.byteLength;) {
+      if (bytes.byteLength - offset < 11) throw new Error("Truncated history event.");
       const us = Number(view.getBigUint64(offset, false));
       if (!Number.isSafeInteger(us) || us <= after) throw new Error("Invalid history timestamp.");
-      const decoded = parseTelemetry(new DataView(bytes, offset + 8, 25));
-      if (!decoded) throw new Error("Invalid history reading.");
-      readings.push({ ...fromBroadcast(pillId, decoded, Math.floor(us / 1000)), source: "server", serverUs: us });
+      const type = view.getUint8(offset + 8);
+      const length = view.getUint16(offset + 9, false);
+      if (offset + 11 + length > bytes.byteLength) throw new Error("Truncated history event payload.");
+      if (type === 0 && length === 25) {
+        const decoded = parseTelemetry(new DataView(bytes, offset + 11, 25));
+        if (!decoded) throw new Error("Invalid history reading.");
+        readings.push({ ...fromBroadcast(pillId, decoded, Math.floor(us / 1000)), source: "server", serverUs: us });
+      } else if (type === 1 && length >= 4) {
+        const revision = view.getUint32(offset + 11, false);
+        const json = new TextDecoder("utf-8", {fatal: true}).decode(new Uint8Array(bytes, offset + 15, length - 4));
+        const document = JSON.parse(json) as ProfileDocument;
+        if (applyProfileEvent(historyId, revision, document)) profilesChanged = true;
+      } else throw new Error("Invalid history event type or size.");
       after = us;
+      offset += 11 + length;
+      count++;
     }
-    await saveServerPage(readings);
+    const declaredCount = Number(response.headers.get("X-Record-Count"));
+    if (!Number.isSafeInteger(declaredCount) || declaredCount !== count) throw new Error("Invalid history event count.");
+    await saveServerPage(historyId, after, readings);
     added += readings.length;
-    if (readings.length < 1024) return added;
+    if (count < 1024) return {readings: added, profilesChanged};
   }
 }
 
-export async function deleteReadings(pillId: string): Promise<void> {
+export async function deleteReadings(pillId: string, historyId?: string): Promise<void> {
   const db = await database();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const transaction = db.transaction([STORE_NAME, SYNC_STORE], "readwrite");
+    if (historyId) transaction.objectStore(SYNC_STORE).delete(historyId);
     const index = transaction.objectStore(STORE_NAME).index("by_pill_time");
     const request = index.openKeyCursor(IDBKeyRange.bound([pillId, 0], [pillId, Number.MAX_SAFE_INTEGER]));
     request.onsuccess = () => {

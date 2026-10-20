@@ -12,16 +12,19 @@ meta.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout
 meta.exec('CREATE TABLE IF NOT EXISTS pills (ordinal INTEGER PRIMARY KEY, key TEXT NOT NULL UNIQUE, public_key BLOB NOT NULL, read_hash BLOB NOT NULL, control_hash BLOB, last_us INTEGER NOT NULL DEFAULT 0)');
 if (!meta.prepare('PRAGMA table_info(pills)').all().some((column) => column.name === 'control_hash'))
   meta.exec('ALTER TABLE pills ADD COLUMN control_hash BLOB');
-meta.exec('CREATE TABLE IF NOT EXISTS profiles (pill_id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL)');
+meta.exec('CREATE TABLE IF NOT EXISTS profiles (pill_id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL, updated_us INTEGER NOT NULL DEFAULT 0)');
+if (!meta.prepare('PRAGMA table_info(profiles)').all().some((column) => column.name === 'updated_us'))
+  meta.exec('ALTER TABLE profiles ADD COLUMN updated_us INTEGER NOT NULL DEFAULT 0');
 const lookup = meta.prepare('SELECT ordinal,read_hash,control_hash FROM pills WHERE key=?');
 const register = meta.prepare('INSERT OR IGNORE INTO pills(key,public_key,read_hash) VALUES(?,?,?)');
 const updateControl = meta.prepare('UPDATE pills SET control_hash=? WHERE ordinal=?');
-const readProfile = meta.prepare('SELECT revision,body FROM profiles WHERE pill_id=?');
-const putProfile = meta.prepare('INSERT INTO profiles(pill_id,revision,body) VALUES(?,?,?) ON CONFLICT(pill_id) DO UPDATE SET revision=excluded.revision,body=excluded.body');
+const readProfile = meta.prepare('SELECT revision,body,updated_us FROM profiles WHERE pill_id=?');
+const putProfile = meta.prepare('INSERT INTO profiles(pill_id,revision,body,updated_us) VALUES(?,?,?,?) ON CONFLICT(pill_id) DO UPDATE SET revision=excluded.revision,body=excluded.body,updated_us=excluded.updated_us');
 const updateLast = meta.prepare('UPDATE pills SET last_us=max(last_us,?) WHERE ordinal=?');
-const loaded = meta.prepare('SELECT p.key,p.public_key,p.read_hash,p.control_hash,p.last_us,f.revision AS profile_revision,f.body AS profiles_body FROM pills p LEFT JOIN profiles f ON f.pill_id=p.ordinal').all().map((row) => ({
+const loaded = meta.prepare('SELECT p.key,p.public_key,p.read_hash,p.control_hash,p.last_us,f.updated_us AS profile_us,f.body AS profiles_body FROM pills p LEFT JOIN profiles f ON f.pill_id=p.ordinal').all().map((row) => ({
   key: row.key, publicKey: row.public_key, readHash: row.read_hash,
-  controlHash: row.control_hash, lastUs: Number(row.last_us), profileRevision: row.profile_revision ?? 0,
+  controlHash: row.control_hash, lastUs: Number(row.last_us),
+  profileUs: Number(row.profile_us || 0),
   curve: row.profiles_body ? JSON.parse(row.profiles_body).profiles.at(-1)?.curve || null : null
 }));
 
@@ -45,6 +48,7 @@ function openWriter(day) {
   writer = new DatabaseSync(dayPath(day));
   writer.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA cache_size=-32768; PRAGMA wal_autocheckpoint=0; PRAGMA busy_timeout=5000');
   writer.exec('CREATE TABLE IF NOT EXISTS readings(pill_id INTEGER NOT NULL,received_us INTEGER NOT NULL,message BLOB NOT NULL CHECK(length(message)=25),PRIMARY KEY(pill_id,received_us)) WITHOUT ROWID');
+  writer.exec('CREATE TABLE IF NOT EXISTS profile_events(pill_id INTEGER NOT NULL,received_us INTEGER NOT NULL,revision INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(pill_id,received_us)) WITHOUT ROWID');
   insert = writer.prepare('INSERT OR IGNORE INTO readings(pill_id,received_us,message) VALUES(?,?,?)');
 }
 
@@ -103,15 +107,30 @@ function readPage(key, after, limit) {
   const nowDay = dayOf(Date.now() * 1000);
   const oldest = (Date.now() - 90 * 86400_000) * 1000;
   let current = Math.max(after, oldest);
+  const snapshot = readProfile.get(pill.ordinal);
+  if (after === 0 && snapshot?.revision && snapshot.updated_us < oldest)
+    records.push({us: Math.floor(oldest) - 1, type: 'profile', revision: snapshot.revision, body: snapshot.body});
   for (let day = dayOf(current); day <= nowDay && records.length < limit; ) {
     const filename = dayPath(day);
+    const dayRecords = [];
     if (fs.existsSync(filename)) {
       const db = day === writerDay ? writer : new DatabaseSync(filename, {readOnly: true});
-      const rows = db.prepare('SELECT received_us,message FROM readings WHERE pill_id=? AND received_us>? ORDER BY received_us LIMIT ?').all(pill.ordinal, current, limit - records.length);
-      for (const row of rows) records.push({us: Number(row.received_us), message: row.message});
+      const remaining = limit - records.length;
+      const rows = db.prepare('SELECT received_us,message FROM readings WHERE pill_id=? AND received_us>? ORDER BY received_us LIMIT ?').all(pill.ordinal, current, remaining)
+        .map((row) => ({us: Number(row.received_us), type: 'reading', message: row.message}));
+      const events = (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='profile_events'").get() ?
+        db.prepare('SELECT received_us,revision,body FROM profile_events WHERE pill_id=? AND received_us>? ORDER BY received_us LIMIT ?').all(pill.ordinal, current, remaining) : [])
+        .map((row) => ({us: Number(row.received_us), type: 'profile', revision: row.revision, body: row.body}));
+      dayRecords.push(...rows, ...events);
+      if (snapshot?.revision && day === dayOf(snapshot.updated_us) && snapshot.updated_us > current &&
+          !events.some((event) => event.us === snapshot.updated_us))
+        dayRecords.push({us: Number(snapshot.updated_us), type: 'profile', revision: snapshot.revision, body: snapshot.body});
       if (db !== writer) db.close();
-      if (records.length === limit) break;
+    } else if (snapshot?.revision && day === dayOf(snapshot.updated_us) && snapshot.updated_us > current) {
+      dayRecords.push({us: Number(snapshot.updated_us), type: 'profile', revision: snapshot.revision, body: snapshot.body});
     }
+    records.push(...dayRecords.sort((a, b) => a.us - b.us).slice(0, limit - records.length));
+    if (records.length === limit) break;
     const date = new Date(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + 1);
     day = date.toISOString().slice(0, 10).replaceAll('-', '');
@@ -139,17 +158,26 @@ function getProfiles(key) {
   return pill ? readProfile.get(pill.ordinal) || {revision: 0, body: '{"version":1,"profiles":[]}'} : null;
 }
 
-function saveProfiles(key, expected, body) {
+function saveProfiles(key, expected, body, us) {
   const pill = lookup.get(key);
   if (!pill) return null;
-  meta.exec('BEGIN IMMEDIATE');
+  const day = dayOf(us);
+  openWriter(day);
+  meta.prepare('ATTACH DATABASE ? AS event_day').run(dayPath(day));
+  let transaction = false;
   try {
+    meta.exec('BEGIN IMMEDIATE');
+    transaction = true;
     const current = readProfile.get(pill.ordinal)?.revision || 0;
-    if (current !== expected) { meta.exec('ROLLBACK'); return {conflict: true, revision: current}; }
-    putProfile.run(pill.ordinal, current + 1, body);
+    if (current !== expected) { meta.exec('ROLLBACK'); transaction = false; return {conflict: true, revision: current}; }
+    meta.prepare('INSERT INTO event_day.profile_events(pill_id,received_us,revision,body) VALUES(?,?,?,?)')
+      .run(pill.ordinal, us, current + 1, body);
+    putProfile.run(pill.ordinal, current + 1, body, us);
     meta.exec('COMMIT');
+    transaction = false;
     return {revision: current + 1};
-  } catch (error) { meta.exec('ROLLBACK'); throw error; }
+  } catch (error) { if (transaction) meta.exec('ROLLBACK'); throw error; }
+  finally { meta.exec('DETACH DATABASE event_day'); }
 }
 
 function claimControl(key, publicKey, readHash, controlHash) {
@@ -164,12 +192,12 @@ function claimControl(key, publicKey, readHash, controlHash) {
 }
 
 parentPort.postMessage({type: 'ready', loaded});
-parentPort.on('message', ({requestId, type, rows, key, after, limit, expected, body, publicKey, readHash, controlHash}) => {
+parentPort.on('message', ({requestId, type, rows, key, after, limit, expected, body, us, publicKey, readHash, controlHash}) => {
   try {
     const value = type === 'insert' ? insertBatch(rows) :
       type === 'read' ? readPage(key, after, limit) :
       type === 'getProfiles' ? getProfiles(key) :
-      type === 'saveProfiles' ? saveProfiles(key, expected, body) :
+      type === 'saveProfiles' ? saveProfiles(key, expected, body, us) :
       type === 'claimControl' ? claimControl(key, publicKey, readHash, controlHash) :
       type === 'prune' ? prune() : null;
     if (!['insert', 'read', 'getProfiles', 'saveProfiles', 'claimControl', 'prune'].includes(type)) throw new Error('Unknown store request');
