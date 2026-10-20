@@ -114,8 +114,11 @@ return pad, but had remained an input in OpenPill. After configuring it as a
 low output, a live BLE diagnostic with the charger connected reported ADC2
 `95` (10-bit) and 3.837 V, instead of the previous fixed `-508` and 4.189 V.
 ADC1/ADC2/ADC3 were `101/95/-508` in the same diagnostic. This establishes
-that the missing GPIO5 setup caused the stuck ADC2 reading. The 3.837 V
-conversion has not yet been compared with a simultaneous meter reading.
+that the missing GPIO5 setup caused the stuck ADC2 reading. A subsequent BLE
+read reported 3.837 V (ADC2 `94` in the three-channel diagnostic) while a
+meter read 3.65 V at the battery terminals with the charger connected. The
+voltage conversion currently reads 0.187 V high at that point; more circuit
+and ADC checks are needed before adjusting its calibration.
 
 ## LEDs
 
