@@ -88,6 +88,11 @@ so the earlier ADC1/battery correlation is insufficient to identify a battery
 input. Battery-terminal voltage was not measured concurrently with these two
 BLE readings.
 
+With the charger still connected, the meter subsequently read 3.57 V at the
+battery terminals. A contemporaneous BLE reading reported ADC1/ADC2/ADC3 as
+`-296/-508/-231` and battery as 4.189 V / 100%, an error of +0.619 V against
+the meter. ADC2 was still fixed at its negative limit.
+
 ## LEDs
 
 - The one confirmed MCU-controlled status LED is on GPIO18. It is active-low;
