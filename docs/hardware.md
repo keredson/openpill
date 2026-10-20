@@ -80,6 +80,13 @@ means the readings alone cannot establish a passive series circuit; other
 connections, circuit state, or measurement timing matter. Neither R1/R2 pad
 shows the approximately 1.2 V input expected of a 3:1 battery divider. A
 matching BLE ADC reading was unavailable because the Pill was not advertising.
+After BLE advertising resumed with the charger connected, two readings a few
+seconds apart reported ADC1/ADC2/ADC3 as `-265/-508/-243` and
+`-296/-508/-496`; both reported 4.189 V / 100% battery. ADC1 and ADC3 can
+change substantially over seconds while ADC2 remains at its negative limit,
+so the earlier ADC1/battery correlation is insufficient to identify a battery
+input. Battery-terminal voltage was not measured concurrently with these two
+BLE readings.
 
 ## LEDs
 
