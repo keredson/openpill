@@ -117,8 +117,7 @@ ADC1/ADC2/ADC3 were `101/95/-508` in the same diagnostic. This establishes
 that the missing GPIO5 setup caused the stuck ADC2 reading. A subsequent BLE
 read reported 3.837 V (ADC2 `94` in the three-channel diagnostic) while a
 meter read 3.65 V at the battery terminals with the charger connected. The
-voltage conversion currently reads 0.187 V high at that point; more circuit
-and ADC checks are needed before adjusting its calibration.
+voltage conversion then read 0.187 V high at that point.
 
 The divider junction subsequently measured 1.13 V while the battery terminals
 measured 3.65 V, a ratio of about 3.23:1. The LIS3DH reports a left-aligned
@@ -127,7 +126,8 @@ signed high byte. It now receives the averaged full 10-bit value, while the
 BLE sample retains the high byte for protocol compatibility. After installing
 that correction, a BLE read with the charger disconnected reported 3.586 V
 with ADC2 high byte `32` and a separate three-channel ADC2 reading of `138`.
-A fresh meter comparison in the same charger state is still needed.
+A meter read 3.62 V at the battery terminals with the charger disconnected,
+so the corrected conversion was 0.034 V low (about 0.9%) at that point.
 
 ## LEDs
 
