@@ -11,6 +11,7 @@
 #define HARDWARE_VALID_TEMPERATURE (1U << 1)
 #define HARDWARE_VALID_BATTERY (1U << 2)
 #define HARDWARE_VALID_CHARGER (1U << 3)
+#define HARDWARE_VALID_BATTERY_FRESH (1U << 4)
 
 typedef struct {
     uint8_t version;

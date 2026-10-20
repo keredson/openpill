@@ -121,7 +121,7 @@ did not include the gravity field:
 | Offset | Type | Meaning |
 | ---: | --- | --- |
 | 0 | `u8` | Format version (`2`) |
-| 1 | `u8` | Valid flags: accel `0x01`, temperature `0x02`, battery `0x04`, power `0x08` |
+| 1 | `u8` | Valid flags: accel `0x01`, temperature `0x02`, battery `0x04`, power `0x08`; `0x10` means the battery value averaged four fresh ADC2 samples |
 | 2 | `u8` | External power present |
 | 3 | `u8` | Status LED brightness (`0`–`255`) |
 | 4 | `i16` | X acceleration in mg |

@@ -445,6 +445,8 @@ def print_hardware(sample: HardwareSample) -> None:
     print(f"Temperature:   {value(2, f'{sample.temperature_c:.2f} C')}")
     print(f"Gravity:       {sample.gravity:.3f} SG" if sample.gravity is not None else "Gravity:       unavailable")
     print(f"Battery:      {value(4, f'{battery_percent_from_mv(sample.battery_mv):.0f}% ({sample.battery_mv} mV; ADC2 raw {sample.battery_adc_raw})')}")
+    if sample.valid & 16:
+        print("Battery ADC:  four fresh samples averaged")
     print(f"Charger:      {value(8, 'connected' if sample.charger_connected else 'disconnected')}")
     print(f"Status LED:   {sample.led_brightness}/255")
 

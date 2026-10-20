@@ -99,6 +99,18 @@ consecutive BLE diagnostics reported ADC1/ADC2/ADC3 as `-508/-508/-310` and
 auxiliary ADC channels can therefore reach the same near-limit value; this
 observation alone does not identify a defective ADC2 input or a divider fault.
 
+The battery read now waits for the LIS3DH's XYZ fresh-data flag, reads XYZ and
+ADC2 four times, and averages the four ADC2 results. Each wait has an eight
+RTOS-tick limit. If that sequence fails, a single direct ADC2 read preserves
+BLE recovery; the sensor sample marks only a completed fresh sequence. Temperature
+still comes from one TMP1075 register read; it does not share this sampling
+sequence.
+
+A BLE read after installing this sequence confirmed the four-sample flag and
+still reported ADC2 raw `-127`, 4.189 V, and 100% with the charger connected.
+Waiting for fresh XYZ samples and averaging ADC2 does not explain the incorrect
+battery estimate on this Pill.
+
 ## LEDs
 
 - The one confirmed MCU-controlled status LED is on GPIO18. It is active-low;

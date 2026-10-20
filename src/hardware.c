@@ -11,6 +11,7 @@
 #include "esp_check.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "vendor_calibration.h"
 
 #define SENSOR_I2C_PORT I2C_NUM_0
@@ -22,6 +23,8 @@
 #define LIS3DH_WHO_AM_I 0x0f
 #define LIS3DH_WHO_AM_I_VALUE 0x33
 #define LIS3DH_STATUS_REG_AUX 0x07
+#define LIS3DH_STATUS_REG 0x27
+#define LIS3DH_STATUS_ZYXDA 0x08
 #define LIS3DH_OUT_ADC1_L 0x08
 #define LIS3DH_TEMP_CFG_REG 0x1f
 #define LIS3DH_CTRL_REG1 0x20
@@ -37,6 +40,8 @@
 #define LIS3DH_OUT_ADC2_L 0x0a
 #define LIS3DH_OUT_X_L 0x28
 #define LIS3DH_AUTO_INCREMENT 0x80
+#define LIS3DH_FRESH_TIMEOUT_TICKS 8
+#define LIS3DH_BATTERY_SAMPLES 4
 
 #define TMP1075_ADDRESS 0x48
 #define TMP1075_TEMPERATURE_REG 0x00
@@ -71,6 +76,36 @@ static esp_err_t i2c_write_u8(uint8_t address, uint8_t reg, uint8_t value)
 static int16_t read_le_i16(const uint8_t *value)
 {
     return (int16_t)((uint16_t)value[0] | ((uint16_t)value[1] << 8));
+}
+
+static void decode_accel(hardware_sample_t *sample, const uint8_t *xyz)
+{
+    /* High-resolution +/-2 g results are left-aligned with 1 mg/LSB. */
+    sample->accel_x_mg = read_le_i16(xyz) >> 4;
+    sample->accel_y_mg = read_le_i16(xyz + 2) >> 4;
+    sample->accel_z_mg = read_le_i16(xyz + 4) >> 4;
+    sample->valid |= HARDWARE_VALID_ACCEL;
+}
+
+static esp_err_t read_fresh_accel(uint8_t xyz[6])
+{
+    TickType_t started = xTaskGetTickCount();
+    for (;;) {
+        uint8_t status;
+        esp_err_t error = i2c_read(LIS3DH_ADDRESS, LIS3DH_STATUS_REG,
+                                   &status, 1);
+        if (error != ESP_OK) {
+            return error;
+        }
+        if (status & LIS3DH_STATUS_ZYXDA) {
+            return i2c_read(LIS3DH_ADDRESS,
+                            LIS3DH_OUT_X_L | LIS3DH_AUTO_INCREMENT, xyz, 6);
+        }
+        if (xTaskGetTickCount() - started >= LIS3DH_FRESH_TIMEOUT_TICKS) {
+            return ESP_ERR_TIMEOUT;
+        }
+        vTaskDelay(1);
+    }
 }
 
 static esp_err_t init_lis3dh(void)
@@ -225,32 +260,57 @@ esp_err_t hardware_read(hardware_sample_t *sample)
     esp_err_t first_error = ESP_OK;
     if (lis3dh_available) {
         uint8_t xyz[6];
-        uint8_t reg = LIS3DH_OUT_X_L | LIS3DH_AUTO_INCREMENT;
-        esp_err_t error = i2c_read(LIS3DH_ADDRESS, reg, xyz, sizeof(xyz));
-        if (error == ESP_OK) {
-            /* In high-resolution +/-2 g mode, the left-aligned 12-bit result
-             * has a sensitivity of 1 mg/LSB. */
-            sample->accel_x_mg = read_le_i16(xyz) >> 4;
-            sample->accel_y_mg = read_le_i16(xyz + 2) >> 4;
-            sample->accel_z_mg = read_le_i16(xyz + 4) >> 4;
-            sample->valid |= HARDWARE_VALID_ACCEL;
-        } else {
-            first_error = error;
-        }
+        int32_t adc_sum = 0;
+        unsigned adc_samples = 0;
+        for (unsigned i = 0; i < LIS3DH_BATTERY_SAMPLES; ++i) {
+            esp_err_t error = read_fresh_accel(xyz);
+            if (error != ESP_OK) {
+                first_error = error;
+                break;
+            }
+            decode_accel(sample, xyz);
 
-        uint8_t adc[2];
-        reg = LIS3DH_OUT_ADC2_L | LIS3DH_AUTO_INCREMENT;
-        error = i2c_read(LIS3DH_ADDRESS, reg, adc, sizeof(adc));
-        if (error == ESP_OK) {
-            /* ADC2 is the configured battery channel. Keep the signed high
-             * byte representation for the existing sample format; verify its
-             * physical input before changing the conversion. */
-            int16_t raw = (int8_t)adc[1];
+            uint8_t adc[2];
+            error = i2c_read(LIS3DH_ADDRESS,
+                             LIS3DH_OUT_ADC2_L | LIS3DH_AUTO_INCREMENT,
+                             adc, sizeof(adc));
+            if (error != ESP_OK) {
+                first_error = error;
+                break;
+            }
+            adc_sum += read_le_i16(adc) >> 6;
+            ++adc_samples;
+        }
+        if (adc_samples == LIS3DH_BATTERY_SAMPLES) {
+            /* The sample protocol carries the signed ADC2 high byte. Average
+             * the four 10-bit readings before reducing to that resolution. */
+            int16_t raw = (int16_t)(adc_sum / (LIS3DH_BATTERY_SAMPLES * 4));
             sample->battery_adc_raw = raw;
             sample->battery_mv = vendor_calibration_battery_mv(raw);
-            sample->valid |= HARDWARE_VALID_BATTERY;
-        } else if (first_error == ESP_OK) {
-            first_error = error;
+            sample->valid |= HARDWARE_VALID_BATTERY |
+                             HARDWARE_VALID_BATTERY_FRESH;
+        } else {
+            /* Preserve BLE recovery if the fresh-data sequence fails. This
+             * is the previous single-read path, not a diagnostic result. */
+            uint8_t adc[2];
+            if (i2c_read(LIS3DH_ADDRESS,
+                         LIS3DH_OUT_ADC2_L | LIS3DH_AUTO_INCREMENT,
+                         adc, sizeof(adc)) == ESP_OK) {
+                int16_t raw = (int8_t)adc[1];
+                sample->battery_adc_raw = raw;
+                sample->battery_mv = vendor_calibration_battery_mv(raw);
+                sample->valid |= HARDWARE_VALID_BATTERY;
+            }
+            if (!(sample->valid & HARDWARE_VALID_ACCEL) &&
+                i2c_read(LIS3DH_ADDRESS,
+                         LIS3DH_OUT_X_L | LIS3DH_AUTO_INCREMENT,
+                         xyz, sizeof(xyz)) == ESP_OK) {
+                decode_accel(sample, xyz);
+            }
+            if ((sample->valid & (HARDWARE_VALID_ACCEL | HARDWARE_VALID_BATTERY)) ==
+                (HARDWARE_VALID_ACCEL | HARDWARE_VALID_BATTERY)) {
+                first_error = ESP_OK;
+            }
         }
     }
 
@@ -310,6 +370,24 @@ esp_err_t hardware_read_adc_diagnostics(hardware_adc_diagnostics_t *diagnostics)
     return error;
 }
 
+static esp_err_t read_accel_only(hardware_sample_t *sample)
+{
+    if (!lis3dh_available) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (sensor_mutex == NULL ||
+        xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(250)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    uint8_t xyz[6];
+    esp_err_t error = read_fresh_accel(xyz);
+    if (error == ESP_OK) {
+        decode_accel(sample, xyz);
+    }
+    xSemaphoreGive(sensor_mutex);
+    return error;
+}
+
 esp_err_t hardware_read_stable(hardware_sample_t *sample)
 {
     if (sample == NULL) {
@@ -321,9 +399,14 @@ esp_err_t hardware_read_stable(hardware_sample_t *sample)
     hardware_sample_t latest = {0};
     unsigned valid_samples = 0;
     for (unsigned i = 0; i < 10; ++i) {
-        /* A temperature or auxiliary-ADC error must not discard a valid
-         * accelerometer reading used to select the power state. */
-        (void)hardware_read(&latest);
+        if (i + 1 == 10) {
+            /* Only the final orientation sample needs battery and temperature.
+             * The battery path now waits for four fresh conversions. */
+            (void)hardware_read(&latest);
+        } else {
+            memset(&latest, 0, sizeof(latest));
+            (void)read_accel_only(&latest);
+        }
         if (latest.valid & HARDWARE_VALID_ACCEL) {
             x += latest.accel_x_mg;
             y += latest.accel_y_mg;
