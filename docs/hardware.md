@@ -40,12 +40,12 @@ bridge itself; it does not reliably hold the Pill in reset. Never jumper EN to
 - U4 is an ST LIS3DH accelerometer at I2C address `0x19`. Its `WHO_AM_I` value
   is `0x33`. The sensor and temperature IC share I2C0 at 100 kHz on GPIO25
   (SDA) and GPIO26 (SCL).
-- Battery voltage is routed through a nominal 3:1 divider to the LIS3DH's
-  auxiliary ADC2 input. It is not connected to ESP32 ADC2. The vendor reads
-  `OUT_ADC2_L/H` through its signed high byte and stores a charging endpoint in
-  `nvs:adc_cal`. OpenPill imports that value through a direct
-  read-only partition parser and reports both the raw value and calibrated
-  millivolts. Missing or invalid calibration falls back to the nominal equation.
+- The battery measurement path currently selects the LIS3DH's auxiliary ADC2
+  registers (`OUT_ADC2_L/H`), not ESP32 ADC2. The board also has a stored
+  charging endpoint in `nvs:adc_cal`; OpenPill reads it without modifying NVS.
+  The physical input routing and voltage conversion still need validation.
+  On this Pill, ADC2 reads close to its negative limit while battery-terminal
+  voltage changes, so its reported battery voltage and percentage are wrong.
 - GPIO23 is charger-present/USB detect and is active-low.
 - GPIO34 is used as OpenPill's deep-sleep wake input from the LIS3DH interrupt
   line. Firmware tests that the sensor can assert this input before relying on
@@ -53,6 +53,24 @@ bridge itself; it does not reliably hold the Pill in reset. Never jumper EN to
   failed test enables a 60-second timer fallback.
 - The board includes a `4056`-marked TP4056-compatible Li-ion charger, plus a
   switching/power section near the `2R2` inductor and discrete MOSFET/diodes.
+
+### Battery ADC investigation
+
+The ADC diagnostic uses the LIS3DH's 10-bit, two's-complement results. Recent
+measurements paired with a meter at the battery terminals were:
+
+| Battery terminals | Charger | ADC1 | ADC2 | ADC3 |
+| ---: | --- | ---: | ---: | ---: |
+| about 3.38 V | disconnected | 62 | -508 | -172 |
+| 3.45 V | connected | 42 | -508 | -199 |
+| 3.56 V | disconnected | 18 | -508 | -197 |
+
+The first pairing followed a charging/unplugging cycle, so its battery voltage
+is less precise. ADC2 is effectively fixed near the -512 limit and currently
+produces a false 4.189 V / 100% reading. ADC1 moves inversely as battery
+voltage rises; ADC3 does not move consistently. That correlation does not yet
+identify the battery divider's physical connection. Measure the divider node
+and the LIS3DH input path before changing the selected channel or conversion.
 
 ## LEDs
 

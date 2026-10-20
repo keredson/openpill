@@ -242,9 +242,9 @@ esp_err_t hardware_read(hardware_sample_t *sample)
         reg = LIS3DH_OUT_ADC2_L | LIS3DH_AUTO_INCREMENT;
         error = i2c_read(LIS3DH_ADDRESS, reg, adc, sizeof(adc));
         if (error == ESP_OK) {
-            /* The battery divider is connected to LIS3DH auxiliary ADC2. Its
-             * calibrated representation uses the signed high byte of this
-             * left-aligned sample. */
+            /* ADC2 is the configured battery channel. Keep the signed high
+             * byte representation for the existing sample format; verify its
+             * physical input before changing the conversion. */
             int16_t raw = (int8_t)adc[1];
             sample->battery_adc_raw = raw;
             sample->battery_mv = vendor_calibration_battery_mv(raw);

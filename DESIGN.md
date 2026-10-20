@@ -18,7 +18,8 @@ update mechanism for users without a wired recovery setup.
 
 - LIS3DH accelerometer on I2C, including its low-power interrupt functions
 - TMP1075-compatible temperature sensor on I2C
-- Battery divider connected to LIS3DH auxiliary ADC2
+- LIS3DH auxiliary ADC selected for battery sensing; the board's physical
+  routing and voltage conversion still need validation
 - Active-low external-power/charger-present signal on GPIO23
 - Active-low firmware status LED on GPIO18
 - Probable LIS3DH interrupt signal on GPIO34
