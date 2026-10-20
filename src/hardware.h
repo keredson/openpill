@@ -25,6 +25,14 @@ typedef struct {
     uint16_t battery_mv;
 } hardware_sample_t;
 
+typedef struct {
+    uint8_t status;
+    uint8_t ctrl1;
+    uint8_t ctrl4;
+    uint8_t temp_cfg;
+    int16_t adc[3];
+} hardware_adc_diagnostics_t;
+
 typedef enum {
     HARDWARE_ORIENTATION_UNKNOWN = 0,
     HARDWARE_ORIENTATION_HORIZONTAL,
@@ -34,6 +42,7 @@ typedef enum {
 
 esp_err_t hardware_init(void);
 esp_err_t hardware_read(hardware_sample_t *sample);
+esp_err_t hardware_read_adc_diagnostics(hardware_adc_diagnostics_t *diagnostics);
 esp_err_t hardware_read_stable(hardware_sample_t *sample);
 bool hardware_external_power_present(void);
 hardware_orientation_t hardware_orientation(const hardware_sample_t *sample);

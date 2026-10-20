@@ -36,6 +36,7 @@ DATA_UUID = "1b3d644f-58b8-47f7-ba13-3e0878893b25"
 STATUS_UUID = "1b23db1d-f22f-456d-82a4-0a35710139c1"
 HARDWARE_SERVICE_UUID = "3cf82945-e436-4a1a-badc-bf55bcbffc59"
 HARDWARE_SAMPLE_UUID = "dfaba240-7af2-4e73-ae91-1925685accd5"
+HARDWARE_ADC_DIAGNOSTICS_UUID = "fa0e982a-4b71-472f-a91d-41109c547d22"
 CONFIG_INFO_UUID = "8f5f0001-bfc1-4d83-bf4b-28f27e63c700"
 
 PROTOCOL_VERSION = 1
@@ -315,13 +316,6 @@ class BluezClient:
         while time.monotonic() < deadline:
             props = self.objects().get(device.path, {}).get(DEVICE_IFACE, {})
             if props.get("ServicesResolved", False):
-                # The Pill intentionally does not retain BLE bonds. BlueZ may
-                # resolve cached services without starting security for an
-                # encrypted characteristic read, leaving ReadValue pending
-                # until its D-Bus timeout. Pair explicitly on each new link.
-                if not props.get("Paired", False):
-                    print("Establishing encrypted Bluetooth session...")
-                    self._call(proxy, "Pair", timeout_ms=30_000)
                 return proxy
             time.sleep(0.1)
         raise OtaError("connected, but BlueZ did not resolve GATT services")
@@ -337,7 +331,8 @@ class BluezClient:
     ) -> dict[str, tuple[Gio.DBusProxy, dict[str, Any]]]:
         found: dict[str, tuple[Gio.DBusProxy, dict[str, Any]]] = {}
         required = {CONTROL_UUID, DATA_UUID, STATUS_UUID}
-        wanted = required | {HARDWARE_SAMPLE_UUID, CONFIG_INFO_UUID}
+        wanted = required | {HARDWARE_SAMPLE_UUID, HARDWARE_ADC_DIAGNOSTICS_UUID,
+                             CONFIG_INFO_UUID}
         for path, ifaces in self.objects().items():
             props = ifaces.get(CHAR_IFACE)
             if props is None or not path.startswith(device.path + "/"):
@@ -423,6 +418,10 @@ def command_probe(args: argparse.Namespace) -> None:
         )
         if status.slot_name is not None:
             print(f"Target slot: {status.slot_name}")
+        print(f"Service: {SERVICE_UUID}")
+        if HARDWARE_SAMPLE_UUID in chars:
+            print_hardware(parse_hardware_sample(
+                client.read_value(chars[HARDWARE_SAMPLE_UUID][0])))
         if CONFIG_INFO_UUID in chars:
             try:
                 info = json.loads(client.read_value(chars[CONFIG_INFO_UUID][0]))
@@ -434,10 +433,6 @@ def command_probe(args: argparse.Namespace) -> None:
                     print(f"Firmware ELF SHA256: {info['firmware_elf_sha256']}")
             except (OtaError, ValueError, UnicodeDecodeError):
                 pass
-        print(f"Service: {SERVICE_UUID}")
-        if HARDWARE_SAMPLE_UUID in chars:
-            print_hardware(parse_hardware_sample(
-                client.read_value(chars[HARDWARE_SAMPLE_UUID][0])))
     finally:
         client.disconnect(connection)
 
@@ -466,6 +461,16 @@ def command_read(args: argparse.Namespace) -> None:
             raise OtaError("device does not expose the hardware service")
         print_hardware(parse_hardware_sample(
             client.read_value(chars[HARDWARE_SAMPLE_UUID][0])))
+        if HARDWARE_ADC_DIAGNOSTICS_UUID in chars:
+            raw = client.read_value(chars[HARDWARE_ADC_DIAGNOSTICS_UUID][0])
+            if len(raw) != 11 or raw[0] != 1:
+                raise OtaError("unsupported ADC diagnostics record")
+            _, status, ctrl1, ctrl4, temp_cfg, adc1, adc2, adc3 = struct.unpack(
+                "<BBBBBhhh", raw
+            )
+            print(f"ADC channels: {adc1}, {adc2}, {adc3} (10-bit raw)")
+            print(f"ADC registers: status=0x{status:02x} ctrl1=0x{ctrl1:02x} "
+                  f"ctrl4=0x{ctrl4:02x} temp_cfg=0x{temp_cfg:02x}")
     finally:
         client.disconnect(connection)
 

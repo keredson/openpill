@@ -113,6 +113,7 @@ testing `3`, saved `4`, error `5`, and tested without saving `6`.
 | --- | --- | --- |
 | Service | `3cf82945-e436-4a1a-badc-bf55bcbffc59` | Primary |
 | Sensor sample | `dfaba240-7af2-4e73-ae91-1925685accd5` | Public read |
+| ADC diagnostics | `fa0e982a-4b71-472f-a91d-41109c547d22` | Public read |
 
 The current 20-byte sensor record is little-endian. Version 1 was 16 bytes and
 did not include the gravity field:
@@ -130,6 +131,12 @@ did not include the gravity field:
 | 12 | `i16` | Auxiliary ADC2 raw battery value |
 | 14 | `u16` | Calibrated battery millivolts |
 | 16 | `float32` | Calibrated specific gravity (NaN if acceleration is unavailable) |
+
+The 11-byte ADC diagnostics record is little-endian. Byte 0 is version `1`;
+bytes 1–4 are `STATUS_REG_AUX`, `CTRL_REG1`, `CTRL_REG4`, and `TEMP_CFG_REG`.
+Bytes 5–10 are signed 16-bit ADC1, ADC2, and ADC3 results shifted right by
+six from the sensor's left-aligned 10-bit output. The existing sensor sample
+continues to carry the signed high byte of ADC2 for compatibility.
 
 ## Security boundary
 

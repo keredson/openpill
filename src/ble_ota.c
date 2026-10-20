@@ -77,6 +77,9 @@ static const ble_uuid128_t HARDWARE_SERVICE_UUID =
 static const ble_uuid128_t HARDWARE_SAMPLE_UUID =
     BLE_UUID128_INIT(0xd5, 0xcc, 0x5a, 0x68, 0x25, 0x19, 0x91, 0xae,
                      0x73, 0x4e, 0xf2, 0x7a, 0x40, 0xa2, 0xab, 0xdf);
+static const ble_uuid128_t HARDWARE_ADC_DIAGNOSTICS_UUID =
+    BLE_UUID128_INIT(0x22, 0x7d, 0x54, 0x9c, 0x10, 0x41, 0x1d, 0xa9,
+                     0x2f, 0x47, 0x71, 0x4b, 0x2a, 0x98, 0x0e, 0xfa);
 
 /* 8f5f0000-bfc1-4d83-bf4b-28f27e63c700 and characteristics 0001-0004. */
 static const ble_uuid128_t CONFIG_SERVICE_UUID =
@@ -536,6 +539,29 @@ static int hardware_sample_access(uint16_t conn_handle, uint16_t attr_handle,
                : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
+static int hardware_adc_diagnostics_access(uint16_t conn_handle, uint16_t attr_handle,
+                                           struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    (void)conn_handle;
+    (void)attr_handle;
+    (void)arg;
+    if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+    hardware_adc_diagnostics_t diagnostics;
+    if (hardware_read_adc_diagnostics(&diagnostics) != ESP_OK) {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+    uint8_t value[11] = {1, diagnostics.status, diagnostics.ctrl1,
+                         diagnostics.ctrl4, diagnostics.temp_cfg};
+    for (unsigned i = 0; i < 3; ++i) {
+        write_le16(value + 5 + i * 2, (uint16_t)diagnostics.adc[i]);
+    }
+    return os_mbuf_append(ctxt->om, value, sizeof(value)) == 0
+               ? 0
+               : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
 static int config_info_access(uint16_t conn_handle, uint16_t attr_handle,
                               struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -959,6 +985,9 @@ static const struct ble_gatt_svc_def services[] = {
         .uuid = &HARDWARE_SERVICE_UUID.u,
         .characteristics = (struct ble_gatt_chr_def[]) {
             {.uuid = &HARDWARE_SAMPLE_UUID.u, .access_cb = hardware_sample_access,
+             .flags = BLE_GATT_CHR_F_READ},
+            {.uuid = &HARDWARE_ADC_DIAGNOSTICS_UUID.u,
+             .access_cb = hardware_adc_diagnostics_access,
              .flags = BLE_GATT_CHR_F_READ},
             {0},
         },

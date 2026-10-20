@@ -21,6 +21,8 @@
 #define LIS3DH_ADDRESS 0x19
 #define LIS3DH_WHO_AM_I 0x0f
 #define LIS3DH_WHO_AM_I_VALUE 0x33
+#define LIS3DH_STATUS_REG_AUX 0x07
+#define LIS3DH_OUT_ADC1_L 0x08
 #define LIS3DH_TEMP_CFG_REG 0x1f
 #define LIS3DH_CTRL_REG1 0x20
 #define LIS3DH_CTRL_REG2 0x21
@@ -267,6 +269,45 @@ esp_err_t hardware_read(hardware_sample_t *sample)
 
     xSemaphoreGive(sensor_mutex);
     return first_error;
+}
+
+esp_err_t hardware_read_adc_diagnostics(hardware_adc_diagnostics_t *diagnostics)
+{
+    if (diagnostics == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!lis3dh_available) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (sensor_mutex == NULL ||
+        xSemaphoreTake(sensor_mutex, pdMS_TO_TICKS(250)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    uint8_t adc[6];
+    esp_err_t error = i2c_read(LIS3DH_ADDRESS, LIS3DH_STATUS_REG_AUX,
+                               &diagnostics->status, 1);
+    if (error == ESP_OK) {
+        error = i2c_read(LIS3DH_ADDRESS, LIS3DH_CTRL_REG1, &diagnostics->ctrl1, 1);
+    }
+    if (error == ESP_OK) {
+        error = i2c_read(LIS3DH_ADDRESS, LIS3DH_CTRL_REG4, &diagnostics->ctrl4, 1);
+    }
+    if (error == ESP_OK) {
+        error = i2c_read(LIS3DH_ADDRESS, LIS3DH_TEMP_CFG_REG,
+                         &diagnostics->temp_cfg, 1);
+    }
+    if (error == ESP_OK) {
+        error = i2c_read(LIS3DH_ADDRESS, LIS3DH_OUT_ADC1_L | LIS3DH_AUTO_INCREMENT,
+                         adc, sizeof(adc));
+    }
+    if (error == ESP_OK) {
+        for (unsigned i = 0; i < 3; ++i) {
+            diagnostics->adc[i] = read_le_i16(adc + i * 2) >> 6;
+        }
+    }
+    xSemaphoreGive(sensor_mutex);
+    return error;
 }
 
 esp_err_t hardware_read_stable(hardware_sample_t *sample)
