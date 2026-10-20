@@ -65,7 +65,10 @@ Pill's metadata row. Daily SQLite files continue to contain readings only.
 document with an `ETag` revision. `PUT` uses a separate control key, requires
 `If-Match` with the last revision, and is limited to 16 KiB, 16 profiles, and
 16 reference points per profile. The PWA caches profiles locally and retries a
-local pending change when it next syncs.
+local pending change when it next syncs. On later syncs it sends `If-None-Match`;
+an unchanged revision returns HTTP 304 from the server's in-memory metadata
+without a profile SQLite read or document transfer. The PWA applies the profile
+to historical raw tilt readings locally; the server does not calculate gravity.
 
 To bind or rotate a control key, a phone with physical Bluetooth access gets a
 five-minute, one-use challenge from `GET /v1/control/<history-id>` using the read

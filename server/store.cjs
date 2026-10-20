@@ -19,9 +19,9 @@ const updateControl = meta.prepare('UPDATE pills SET control_hash=? WHERE ordina
 const readProfile = meta.prepare('SELECT revision,body FROM profiles WHERE pill_id=?');
 const putProfile = meta.prepare('INSERT INTO profiles(pill_id,revision,body) VALUES(?,?,?) ON CONFLICT(pill_id) DO UPDATE SET revision=excluded.revision,body=excluded.body');
 const updateLast = meta.prepare('UPDATE pills SET last_us=max(last_us,?) WHERE ordinal=?');
-const loaded = meta.prepare('SELECT p.key,p.public_key,p.read_hash,p.control_hash,p.last_us,f.body AS profiles_body FROM pills p LEFT JOIN profiles f ON f.pill_id=p.ordinal').all().map((row) => ({
+const loaded = meta.prepare('SELECT p.key,p.public_key,p.read_hash,p.control_hash,p.last_us,f.revision AS profile_revision,f.body AS profiles_body FROM pills p LEFT JOIN profiles f ON f.pill_id=p.ordinal').all().map((row) => ({
   key: row.key, publicKey: row.public_key, readHash: row.read_hash,
-  controlHash: row.control_hash, lastUs: Number(row.last_us),
+  controlHash: row.control_hash, lastUs: Number(row.last_us), profileRevision: row.profile_revision ?? 0,
   curve: row.profiles_body ? JSON.parse(row.profiles_body).profiles.at(-1)?.curve || null : null
 }));
 

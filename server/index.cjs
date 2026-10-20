@@ -50,7 +50,7 @@ const ready = new Promise((resolve, reject) => {
       for (const row of message.loaded) registry.set(row.key, {
         publicKey: Buffer.from(row.publicKey), readHash: Buffer.from(row.readHash),
         controlHash: row.controlHash ? Buffer.from(row.controlHash) : null, lastUs: row.lastUs,
-        curveReply: encodeCurve(row.curve)
+        curveReply: encodeCurve(row.curve), profileRevision: row.profileRevision
       });
       resolve();
       return;
@@ -107,7 +107,7 @@ function cors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-Match');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-Match, If-None-Match');
     res.setHeader('Access-Control-Expose-Headers', 'X-Next-After, ETag');
   }
   return !origin || ORIGINS.has(origin);
@@ -170,7 +170,7 @@ async function upload(req, res) {
   const us = Math.max(now * 1000, (pill?.lastUs || 0) + 1);
   if (!pill) {
     pill = {publicKey: publicBytes, readHash, controlHash: null,
-      curveReply: CLEAR_CALIBRATION, lastUs: us};
+      curveReply: CLEAR_CALIBRATION, profileRevision: 0, lastUs: us};
     registry.set(id, pill);
   } else pill.lastUs = us;
   queued.push({key: id, publicKey: publicBytes, readHash, us, message: body});
@@ -299,6 +299,8 @@ async function profiles(req, res, url) {
   if (!expectedHash || !crypto.timingSafeEqual(hash, expectedHash)) return respond(res, 403);
   if (!healthy) return respond(res, 503);
   if (req.method === 'GET') {
+    const etag = `"${pill.profileRevision}"`;
+    if (req.headers['if-none-match'] === etag) return respond(res, 304, '', {ETag: etag});
     const saved = await storeRequest('getProfiles', {key: id});
     return saved ? respond(res, 200, saved.body, {'Content-Type': 'application/json', ETag: `"${saved.revision}"`}) : respond(res, 404);
   }
@@ -322,6 +324,7 @@ async function profiles(req, res, url) {
   if (!result) return respond(res, 404);
   if (result.conflict) return respond(res, 409, '', {ETag: `"${result.revision}"`});
   pill.curveReply = encodeCurve(document.profiles.at(-1)?.curve);
+  pill.profileRevision = result.revision;
   respond(res, 204, '', {ETag: `"${result.revision}"`});
 }
 

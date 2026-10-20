@@ -80,6 +80,7 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   const initial = await fetch(profileUrl, {headers: auth});
   assert.equal(initial.status, 200);
   assert.equal(initial.headers.get('etag'), '"0"');
+  assert.equal((await fetch(profileUrl, {headers: {...auth, 'If-None-Match': '"0"'}})).status, 304);
   const profile = {version: 1, profiles: [{id: crypto.randomBytes(16).toString('hex'),
     startsAt: Date.now() - 60_000, massG: 121, points: [{at: Date.now(), sg: 1.05, angle: null}],
     curve: Array(91).fill(10500)}]};
@@ -110,6 +111,7 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   const savedProfile = await fetch(profileUrl, {headers: auth});
   assert.equal(savedProfile.headers.get('etag'), '"1"');
   assert.deepEqual(await savedProfile.json(), profile);
+  assert.equal((await fetch(profileUrl, {headers: {...auth, 'If-None-Match': '"1"'}})).status, 304);
   const reply = await upload();
   assert.equal(reply.status, 429);
   const curveReply = Buffer.from(await reply.arrayBuffer());
@@ -124,6 +126,7 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   assert.deepEqual(persisted.subarray(8), body);
   const retainedProfile = await fetch(`${base}/v1/profiles/${historyId}`, {headers: auth});
   assert.deepEqual(await retainedProfile.json(), profile);
+  assert.equal((await fetch(`${base}/v1/profiles/${historyId}`, {headers: {...auth, 'If-None-Match': '"1"'}})).status, 304);
   const afterRestart = await upload();
   assert.equal(afterRestart.status, 429);
   assert.equal(Buffer.from(await afterRestart.arrayBuffer()).readUInt16BE(4), 10500);

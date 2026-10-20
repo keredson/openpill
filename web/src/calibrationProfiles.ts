@@ -43,10 +43,12 @@ export function resolvePendingProfiles(historyId: string, readings: { at: number
   return true;
 }
 
-export async function fetchProfiles(historyId: string, readKey: string): Promise<SavedProfiles> {
+export async function fetchProfiles(historyId: string, readKey: string, cached?: SavedProfiles): Promise<SavedProfiles> {
   const response = await fetch(`https://openpill.yeast.win/v1/profiles/${historyId}`, {
-    headers: { Authorization: `Bearer ${readKey}` }, cache: "no-store"
+    headers: { Authorization: `Bearer ${readKey}`,
+      ...(cached ? { "If-None-Match": `"${cached.revision}"` } : {}) }, cache: "no-store"
   });
+  if (response.status === 304 && cached) return cached;
   if (!response.ok) throw new Error(`Calibration sync failed (HTTP ${response.status}).`);
   const document = await response.json() as ProfileDocument;
   const revision = Number(response.headers.get("ETag")?.replaceAll('"', ''));
@@ -87,7 +89,7 @@ function mergeDocuments(remote: ProfileDocument, local: ProfileDocument): Profil
 export async function syncProfiles(historyId: string, readKey: string, controlKey: string | null, attempt = 0): Promise<SavedProfiles> {
   const local = loadProfiles(historyId);
   if (!local.dirty) {
-    const remote = await fetchProfiles(historyId, readKey);
+    const remote = await fetchProfiles(historyId, readKey, local);
     const current = loadProfiles(historyId);
     if (current.dirty) return current;
     storeProfiles(historyId, remote);
