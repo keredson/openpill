@@ -85,9 +85,9 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(result.status, 200);
-  const cursor = result.headers.get('x-next-after');
-  assert.match(cursor, /^\d+$/);
-  assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()).byteLength, 0);
+  const lastReadingUs = result.headers.get('x-next-after');
+  assert.match(lastReadingUs, /^\d+$/);
+  assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${lastReadingUs}`, {headers: auth})).arrayBuffer()).byteLength, 0);
   const controlKey = crypto.randomBytes(32);
   const controlHash = crypto.createHash('sha256').update(controlKey).digest();
   const profileUrl = `${base}/v1/profiles/${historyId}`;
@@ -126,10 +126,10 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   assert.equal(savedProfile.headers.get('etag'), '"1"');
   assert.deepEqual(await savedProfile.json(), profile);
   assert.equal((await fetch(profileUrl, {headers: {...auth, 'If-None-Match': '"1"'}})).status, 304);
-  const eventsAfterReading = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()));
+  const eventsAfterReading = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${lastReadingUs}`, {headers: auth})).arrayBuffer()));
   assert.equal(eventsAfterReading.length, 1);
   assert.equal(eventsAfterReading[0].type, 1);
-  assert.ok(eventsAfterReading[0].us > Number(cursor));
+  assert.ok(eventsAfterReading[0].us > Number(lastReadingUs));
   assert.equal(eventsAfterReading[0].payload.readUInt32BE(0), 1);
   assert.deepEqual(JSON.parse(eventsAfterReading[0].payload.subarray(4).toString()), profile);
   assert.equal((await (await fetch(`${base}/v1/history/${historyId}?after=${eventsAfterReading[0].us}`, {headers: auth})).arrayBuffer()).byteLength, 0);
@@ -161,7 +161,7 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   dayDb.exec('DELETE FROM profile_events');
   dayDb.close();
   await start();
-  const recoveredEvent = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${cursor}`, {headers: auth})).arrayBuffer()));
+  const recoveredEvent = decodeEvents(Buffer.from(await (await fetch(`${base}/v1/history/${historyId}?after=${lastReadingUs}`, {headers: auth})).arrayBuffer()));
   assert.equal(recoveredEvent.length, 1);
   assert.equal(recoveredEvent[0].type, 1);
   assert.deepEqual(JSON.parse(recoveredEvent[0].payload.subarray(4).toString()), profile);

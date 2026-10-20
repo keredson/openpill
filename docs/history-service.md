@@ -43,7 +43,8 @@ two-byte big-endian payload length, then the payload. Type 0 carries the
 unchanged 25-byte reading. Type 1 carries a four-byte big-endian profile
 revision followed by the full UTF-8 JSON profile document. `X-Record-Count`
 reports the number of events and `X-Next-After` the last timestamp. The PWA
-saves one cursor for both event types in IndexedDB after applying the page.
+saves the last synced event timestamp for both event types in IndexedDB after
+applying the page.
 An empty response has zero body bytes.
 
 ## Calibration profiles
