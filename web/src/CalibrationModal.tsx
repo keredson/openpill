@@ -133,15 +133,18 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     const last: CalibrationProfile = { ...withoutCurve, massG };
     const nextProfiles = active ? [...profiles.slice(0, -1), last] : [...profiles, last];
     last.curve = firmwareCurve(last);
-    saveProfileDocument(storageId, { version: 1, profiles: nextProfiles });
-    showProfiles(nextProfiles);
+    try {
+      saveProfileDocument(storageId, { version: 1, profiles: nextProfiles });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save calibration.");
+      return;
+    }
     edited.current = false;
     onChange();
-    setMessage("Calibration saved.");
-    if (historyId && readKey) void syncProfiles(historyId, readKey, controlKey).then((result) => {
-      if (!edited.current) showProfiles(result.document.profiles);
-      setMessage(result.dirty ? "Calibration saved. Server sync is pending." : "Calibration saved and synced.");
-    }).catch((error) => setMessage(error instanceof Error ? error.message : "Could not sync calibration."));
+    if (historyId && readKey) void syncProfiles(historyId, readKey, controlKey)
+      .then(onChange)
+      .catch((error) => console.warn("[OpenPill] Calibration sync pending", error));
+    onClose();
   }
 
   return <Modal open={open} title={`Calibration · ${name}`} onCancel={onClose}
