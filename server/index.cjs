@@ -114,7 +114,7 @@ function cors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-Match, If-None-Match');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-Match, If-None-Match, X-OpenPill-Firmware-Version');
     res.setHeader('Access-Control-Expose-Headers', 'X-Next-After, X-Record-Count, ETag');
   }
   return !origin || ORIGINS.has(origin);
@@ -140,9 +140,13 @@ function decodeBase64url(value, length) {
   return bytes.length === length && bytes.toString('base64url') === value ? bytes : null;
 }
 
-async function upload(req, res) {
+async function upload(req, res, requireVersion) {
   if (!healthy || queued.length + (inFlight?.length || 0) >= MAX_QUEUED) return respond(res, 503);
   if (req.headers['content-type'] !== 'application/octet-stream') return respond(res, 415);
+  const firmwareVersion = req.headers['x-openpill-firmware-version'];
+  if ((requireVersion || firmwareVersion != null) &&
+      (typeof firmwareVersion !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$/.test(firmwareVersion)))
+    return respond(res, 400);
   const publicBytes = decodeBase64url(req.headers['x-openpill-key'], 65);
   const hashText = req.headers['x-openpill-read-hash'];
   if (!publicBytes || publicBytes[0] !== 4 || typeof hashText !== 'string' ||
@@ -363,7 +367,8 @@ async function handle(req, res) {
   if (req.method === 'OPTIONS') return respond(res, 204);
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return respond(res, healthy ? 200 : 503, healthy ? 'ok' : 'unavailable');
-  if (req.method === 'POST' && url.pathname === '/v1/readings') return upload(req, res);
+  if (req.method === 'POST' && url.pathname === '/record') return upload(req, res, true);
+  if (req.method === 'POST' && url.pathname === '/v1/readings') return upload(req, res, false);
   if ((req.method === 'GET' || req.method === 'PUT') && url.pathname.startsWith('/v1/control/'))
     return claimControl(req, res, url);
   if (req.method === 'GET' && url.pathname.startsWith('/v1/history/')) return history(req, res, url);

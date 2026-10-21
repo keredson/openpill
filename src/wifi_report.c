@@ -28,7 +28,7 @@
 #define UPDATE_IMAGE_URL "https://keredson.github.io/openpill/firmware/openpill.bin"
 #define UPDATE_MANIFEST_MAX 512
 #define UPDATE_READ_SIZE 2048
-#define HISTORY_POST_URL "https://openpill.yeast.win/v1/readings"
+#define HISTORY_POST_URL "https://openpill.yeast.win/record"
 
 static const uint8_t history_signing_prefix[] = "OpenPill history upload v1";
 
@@ -324,6 +324,8 @@ static esp_err_t history_post(const app_config_t *config,
     if (client == NULL) return ESP_ERR_NO_MEM;
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
+    esp_http_client_set_header(client, "X-OpenPill-Firmware-Version",
+                               esp_app_get_description()->version);
     esp_http_client_set_header(client, "X-OpenPill-Key", key_header);
     esp_http_client_set_header(client, "X-OpenPill-Signature", signature_header);
     esp_http_client_set_header(client, "X-OpenPill-Read-Hash",

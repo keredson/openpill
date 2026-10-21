@@ -61,19 +61,24 @@ test('signed upload, private sync, durable storage, and rate limit', async (t) =
   await start();
   const headers = {
     'Content-Type': 'application/octet-stream',
+    'X-OpenPill-Firmware-Version': '0.2.6',
     'X-OpenPill-Key': rawPublic.toString('base64url'),
     'X-OpenPill-Signature': signature.toString('base64url'),
     'X-OpenPill-Read-Hash': readHash.toString('hex')
   };
-  const upload = () => fetch(`${base}/v1/readings`, {method: 'POST', headers, body});
-  const invalid = await fetch(`${base}/v1/readings`, {method: 'POST',
+  const upload = () => fetch(`${base}/record`, {method: 'POST', headers, body});
+  const legacyHeaders = {...headers};
+  delete legacyHeaders['X-OpenPill-Firmware-Version'];
+  assert.equal((await fetch(`${base}/record`, {method: 'POST', headers: legacyHeaders, body})).status, 400);
+  const invalid = await fetch(`${base}/record`, {method: 'POST',
     headers: {...headers, 'X-OpenPill-Signature': crypto.randomBytes(70).toString('base64url')}, body});
   assert.equal(invalid.status, 401);
-  const oversized = await fetch(`${base}/v1/readings`, {method: 'POST', headers,
+  const oversized = await fetch(`${base}/record`, {method: 'POST', headers,
     body: Buffer.alloc(26)});
   assert.equal(oversized.status, 413);
   assert.equal((await upload()).status, 202);
   assert.equal((await upload()).status, 429);
+  assert.equal((await fetch(`${base}/v1/readings`, {method: 'POST', headers: legacyHeaders, body})).status, 429);
   const historyUrl = `${base}/v1/history/${historyId}?after=0`;
   const wrong = await fetch(historyUrl, {headers: {Authorization: `Bearer ${crypto.randomBytes(32).toString('base64url')}`}});
   assert.equal(wrong.status, 403);

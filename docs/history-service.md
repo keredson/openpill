@@ -20,14 +20,18 @@ old history expires normally and cannot be recovered with the new key.
 
 ## Upload protocol v1 and history sync v2
 
-`POST /v1/readings` uses `Content-Type: application/octet-stream` and an
+`POST /record` uses `Content-Type: application/octet-stream` and an
 exactly 25-byte body containing the complete BLE manufacturer value, including
 `RAPT` and version 2. Headers:
 
+- `X-OpenPill-Firmware-Version`: the Pill's build version, for compatibility and diagnostics; this header is informational and is not covered by the upload signature
 - `X-OpenPill-Key`: base64url uncompressed 65-byte P-256 public key
 - `X-OpenPill-Read-Hash`: lowercase SHA-256 hex of the read key
 - `X-OpenPill-Signature`: base64url DER ECDSA signature over SHA-256 of
   `OpenPill history upload v1\0` + 32-byte read hash + 25-byte body
+
+The server also accepts the previous `/v1/readings` path without a firmware
+version header while older Pill firmware is being updated.
 
 The server derives the history ID as SHA-256 hex of the public key. It returns
 `202` after placing a valid reading in its RAM write queue and `429` for another
