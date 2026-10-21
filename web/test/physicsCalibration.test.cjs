@@ -21,7 +21,10 @@ test('physical fit recovers balance and cap length from widely spaced references
     at: 1000 + index, angle, sg: gravityFromAngle(angle, actual)
   }));
   const measured = {id: 'test', startsAt: 1, massG: 112, points};
-  assert.equal(fitPhysicalProfile({...measured, points: points.slice(0, 2)}), null);
+  assert.equal(fitPhysicalProfile({...measured, points: points.slice(0, 1)}), null);
+  const twoPointFit = fitPhysicalProfile({...measured, points: points.slice(0, 2)});
+  assert.ok(twoPointFit);
+  assert.equal(twoPointFit.lengthMm, 125);
   const fit = fitPhysicalProfile(measured);
   assert.ok(fit);
   assert.equal(fit.lengthMm, 127);
@@ -37,6 +40,7 @@ test('unknown mass uses nominal length and calibration waits for a bracketing re
   const points = [25, 45, 65].map((angle, index) => ({
     at: 1000 + index, angle, sg: gravityFromAngle(angle, actual)
   }));
+  assert.equal(fitPhysicalProfile({id: 'test', startsAt: 1, massG: null, points: points.slice(0, 2)}), null);
   const fit = fitPhysicalProfile({id: 'test', startsAt: 1, massG: null, points});
   assert.ok(fit);
   assert.equal(fit.lengthMm, 125);

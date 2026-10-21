@@ -1,7 +1,7 @@
 // Floating-body model for an axially symmetric 37 mm housing. The 125 mm
 // nominal length and 7 mm rounded ends are starting geometry, not a claimed
-// measurement of the exact cap contour. Length and balance are fitted per
-// assembled Pill; no polynomial coefficients are fitted.
+// measurement of the exact cap contour. With two points and a known mass,
+// length stays nominal; a third point lets us fit it alongside balance.
 const RADIUS_MM = 18.5;
 const END_MM = 7;
 const SLICES = 48;
@@ -103,12 +103,13 @@ function solveBalance(points: { angle: number; sg: number }[], massG: number, le
 export function fitPhysicalProfile(profile: CalibrationProfile): PhysicalFit | null {
   const points = profile.points.filter((point): point is CalibrationPoint & { angle: number } =>
     point.angle != null && Number.isFinite(point.angle) && Number.isFinite(point.sg));
-  if (points.length < 3 ||
+  if (points.length < (profile.massG == null ? 3 : 2) ||
       Math.max(...points.map((point) => point.angle)) - Math.min(...points.map((point) => point.angle)) < 8) return null;
   let best: PhysicalFit | null = null;
+  const fitLength = profile.massG != null && points.length >= 3;
   const masses = profile.massG == null
     ? Array.from({ length: 26 }, (_, i) => 80 + i * 2) : [profile.massG];
-  const lengths = profile.massG == null ? [125] : [120, 122, 124, 126, 128, 130];
+  const lengths = fitLength ? [120, 122, 124, 126, 128, 130] : [125];
   for (const mass of masses) for (const length of lengths) {
     const fit = solveBalance(points, mass, length);
     if (fit && (!best || fit.rmseMm < best.rmseMm)) best = fit;
@@ -117,8 +118,8 @@ export function fitPhysicalProfile(profile: CalibrationProfile): PhysicalFit | n
     const centerMass = best.massG, centerLength = best.lengthMm;
     for (let mass = Math.max(80, centerMass - (profile.massG == null ? 2 : 0));
       mass <= Math.min(130, centerMass + (profile.massG == null ? 2 : 0)); mass += 1) {
-      for (let length = profile.massG == null ? 125 : Math.max(120, centerLength - 2);
-        length <= (profile.massG == null ? 125 : Math.min(130, centerLength + 2)); length += 1) {
+      for (let length = fitLength ? Math.max(120, centerLength - 2) : 125;
+        length <= (fitLength ? Math.min(130, centerLength + 2) : 125); length += 1) {
         const fit = solveBalance(points, mass, length);
         if (fit && fit.rmseMm < best.rmseMm) best = fit;
       }
