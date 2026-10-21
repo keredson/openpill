@@ -7,6 +7,7 @@ export interface SavedProfiles {
   revision: number;
   dirty: boolean;
   document: ProfileDocument;
+  deletedPoints?: { profileId: string; at: number }[];
 }
 
 export function loadProfiles(historyId: string): SavedProfiles {
@@ -22,13 +23,32 @@ export function storeProfiles(historyId: string, saved: SavedProfiles): void {
   localStorage.setItem(PREFIX + historyId, JSON.stringify(saved));
 }
 
+export function saveProfileDocument(historyId: string, document: ProfileDocument): SavedProfiles {
+  const previous = loadProfiles(historyId);
+  const nextById = new Map(document.profiles.map((profile) => [profile.id, profile]));
+  const deleted = new Map((previous.deletedPoints ?? []).map((point) =>
+    [`${point.profileId}:${point.at}`, point] as const));
+  for (const oldProfile of previous.document.profiles) {
+    const nextProfile = nextById.get(oldProfile.id);
+    if (!nextProfile) continue;
+    const kept = new Set(nextProfile.points.map((point) => point.at));
+    for (const point of oldProfile.points) if (!kept.has(point.at))
+      deleted.set(`${oldProfile.id}:${point.at}`, { profileId: oldProfile.id, at: point.at });
+  }
+  for (const profile of document.profiles) for (const point of profile.points)
+    deleted.delete(`${profile.id}:${point.at}`);
+  const saved = { ...previous, dirty: true, document, deletedPoints: [...deleted.values()] };
+  storeProfiles(historyId, saved);
+  return saved;
+}
+
 export function applyProfileEvent(historyId: string, revision: number, document: ProfileDocument): boolean {
   if (!Number.isSafeInteger(revision) || revision < 1 || document.version !== 1 || !Array.isArray(document.profiles))
     throw new Error("Invalid calibration profile event.");
   const local = loadProfiles(historyId);
   if (revision <= local.revision) return false;
   const next = local.dirty
-    ? { revision, dirty: true, document: mergeDocuments(document, local.document) }
+    ? { ...local, revision, dirty: true, document: mergeDocuments(document, local.document, local.deletedPoints) }
     : { revision, dirty: false, document };
   storeProfiles(historyId, next);
   return true;
@@ -69,7 +89,8 @@ export async function fetchProfiles(historyId: string, readKey: string, cached?:
   return { revision, dirty: false, document };
 }
 
-function mergeDocuments(remote: ProfileDocument, local: ProfileDocument): ProfileDocument {
+function mergeDocuments(remote: ProfileDocument, local: ProfileDocument,
+  deletedPoints: NonNullable<SavedProfiles["deletedPoints"]> = []): ProfileDocument {
   const byId = new Map(remote.profiles.map((profile) => [profile.id, profile]));
   for (const incoming of local.profiles) {
     const existing = byId.get(incoming.id);
@@ -85,8 +106,9 @@ function mergeDocuments(remote: ProfileDocument, local: ProfileDocument): Profil
         throw new Error("A reference point changed on another phone. Review both copies before saving.");
       points.set(point.at, { ...other, ...point, angle: point.angle ?? other?.angle ?? null });
     }
+    const deleted = new Set(deletedPoints.filter((point) => point.profileId === incoming.id).map((point) => point.at));
     byId.set(incoming.id, { ...existing, massG: incoming.massG ?? existing.massG,
-      points: [...points.values()].sort((a, b) => a.at - b.at) });
+      points: [...points.values()].filter((point) => !deleted.has(point.at)).sort((a, b) => a.at - b.at) });
   }
   const profiles = [...byId.values()].sort((a, b) => a.startsAt - b.startsAt);
   if (profiles.length > 16 || profiles.some((profile) => profile.points.length > 16))
@@ -117,8 +139,9 @@ export async function syncProfiles(historyId: string, readKey: string, controlKe
   if (response.status === 409) {
     if (attempt >= 1) throw new Error("Calibration changed again while syncing. Try again shortly.");
     const remote = await fetchProfiles(historyId, readKey);
-    const merged = mergeDocuments(remote.document, loadProfiles(historyId).document);
-    storeProfiles(historyId, { revision: remote.revision, dirty: true, document: merged });
+    const current = loadProfiles(historyId);
+    const merged = mergeDocuments(remote.document, current.document, current.deletedPoints);
+    storeProfiles(historyId, { ...current, revision: remote.revision, dirty: true, document: merged });
     return syncProfiles(historyId, readKey, controlKey, attempt + 1);
   }
   if (!response.ok) throw new Error(`Calibration save failed (HTTP ${response.status}).`);
@@ -126,7 +149,7 @@ export async function syncProfiles(historyId: string, readKey: string, controlKe
   if (!Number.isSafeInteger(revision)) throw new Error("Calibration save lacked a revision.");
   const current = loadProfiles(historyId);
   const saved = JSON.stringify(current.document) === JSON.stringify(local.document)
-    ? { ...local, revision, dirty: false }
+    ? { ...local, revision, dirty: false, deletedPoints: [] }
     : { ...current, revision, dirty: true };
   storeProfiles(historyId, saved);
   return saved;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Modal, Popconfirm } from "antd";
 import type { HistoricalReading } from "./history";
 import { firmwareCurve, type CalibrationProfile } from "./physicsCalibration";
-import { loadProfiles, resolvePendingProfiles, storeProfiles, syncProfiles, type SavedProfiles } from "./calibrationProfiles";
+import { loadProfiles, resolvePendingProfiles, saveProfileDocument, syncProfiles } from "./calibrationProfiles";
 
 function localDateTime(at: number): string {
   const date = new Date(at - new Date(at).getTimezoneOffset() * 60_000);
@@ -133,9 +133,7 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     const last: CalibrationProfile = { ...withoutCurve, massG };
     const nextProfiles = active ? [...profiles.slice(0, -1), last] : [...profiles, last];
     last.curve = firmwareCurve(last);
-    const previous = loadProfiles(storageId);
-    const next: SavedProfiles = { ...previous, dirty: true, document: { version: 1, profiles: nextProfiles } };
-    storeProfiles(storageId, next);
+    saveProfileDocument(storageId, { version: 1, profiles: nextProfiles });
     showProfiles(nextProfiles);
     edited.current = false;
     onChange();
@@ -173,8 +171,8 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
             <td>{new Date(point.at).toLocaleString()}</td>
             <td>{point.sg.toFixed(3)}</td>
             <td>{point.angle == null ? "Waiting for readings" : `${point.angle.toFixed(2)}°`}</td>
-            <td>{canEdit && <Button size="small" danger onClick={() => updateActive({ ...active,
-              points: active.points.filter((old) => old.at !== point.at) })}>Remove</Button>}</td>
+            <td>{canEdit && <Button size="small" danger disabled={adding} aria-label={`Delete calibration point from ${new Date(point.at).toLocaleString()}`}
+              onClick={() => updateActive({ ...active, points: active.points.filter((old) => old.at !== point.at) })}>Delete</Button>}</td>
           </tr>)}
           {canEdit && <tr className="calibration-add-row">
             <td>{onReadLiveTilt ? "Now" : <Input type="datetime-local" aria-label="Measured at" value={time} onChange={(event) => setTime(event.target.value)} />}</td>

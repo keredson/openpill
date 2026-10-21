@@ -23,7 +23,7 @@ vm.runInNewContext(code, {
   require: () => ({firmwareCurve: () => Array(91).fill(10000)}),
   JSON, Number, Array, Map, Set, Math
 });
-const {applyProfileEvent, loadProfiles, storeProfiles} = moduleRecord.exports;
+const {applyProfileEvent, loadProfiles, saveProfileDocument, storeProfiles} = moduleRecord.exports;
 
 test('profile events replace cached documents and preserve unsent local points', () => {
   const id = 'a'.repeat(64);
@@ -44,4 +44,16 @@ test('profile events replace cached documents and preserve unsent local points',
   assert.equal(merged.revision, 2);
   assert.equal(merged.dirty, true);
   assert.deepEqual(merged.document.profiles[0].points.map((point) => point.at), [2, 3, 4]);
+});
+
+test('a deleted calibration point stays deleted when a newer profile event arrives', () => {
+  const id = 'c'.repeat(64);
+  const profileId = 'd'.repeat(32);
+  const point = (at) => ({at, sg: 1 + at / 1000, angle: 20 + at});
+  const document = (points) => ({version: 1, profiles: [{id: profileId, startsAt: 1, massG: 120, points}]});
+  applyProfileEvent(id, 1, document([point(2), point(3)]));
+  const saved = saveProfileDocument(id, document([point(3)]));
+  assert.deepEqual(Array.from(saved.deletedPoints, (entry) => entry.at), [2]);
+  applyProfileEvent(id, 2, document([point(2), point(3), point(4)]));
+  assert.deepEqual(loadProfiles(id).document.profiles[0].points.map((entry) => entry.at), [3, 4]);
 });

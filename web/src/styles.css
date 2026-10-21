@@ -175,6 +175,7 @@ h3 { font-size: 18px; font-weight: 680; }
 .calibration-table th, .calibration-table td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .calibration-table th { color: var(--muted); font-size: 12px; font-weight: 600; }
 .calibration-table td:last-child { text-align: right; }
+.calibration-table th:last-child, .calibration-table td:last-child { position: sticky; right: 0; background: var(--surface); }
 .calibration-add-row .ant-input { min-width: 110px; }
 .calibration-add-row .ant-btn { padding-inline: 6px; }
 .calibration-tilt-source { color: var(--muted); font-size: 12px; }
