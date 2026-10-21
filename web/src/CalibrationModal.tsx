@@ -158,6 +158,11 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     width={680} destroyOnHidden className="calibration-modal">
     {historyId && !canEdit && <Alert type="info" showIcon message="This phone has the read key only. Import the control key to edit calibration." />}
     {message && <Alert type="info" showIcon message={message} style={{ marginBottom: 12 }} />}
+    <div className="calibration-instructions">
+      <strong>How to calibrate</strong>
+      <p>Float the Pill in a liquid with known gravity, let it settle, then enter that gravity and select Add. Water is a useful first point at about 1.000 SG. Add reads the tilt from the connected Pill, or uses its latest saved reading while offline.</p>
+      <p>Use liquids at different gravities until you have at least 4 points with a known dry mass, or 5 without one. The tilt readings must span at least 8°. Then Save. A single water point cannot fit the gravity curve.</p>
+    </div>
     <label>Dry mass (g)<Input type="number" min={50} max={180} step="0.1" value={mass}
       disabled={!canEdit} onChange={(event) => { edited.current = true; setMass(event.target.value); }} placeholder="Optional" /></label>
     <div className="calibration-table-wrap">
