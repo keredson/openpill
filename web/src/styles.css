@@ -176,6 +176,8 @@ h3 { font-size: 18px; font-weight: 680; }
 .calibration-add-row .ant-input { min-width: 110px; }
 .calibration-add-row .ant-btn { padding-inline: 6px; }
 .calibration-tilt-source { color: var(--muted); font-size: 12px; }
+.calibration-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.calibration-footer-actions { display: flex; gap: 8px; margin-left: auto; }
 .interval-settings-control { display: inline-flex; align-items: center; gap: 7px; flex: none; font-size: 13px; }
 .interval-settings-control .ant-select { width: 140px; }
 .settings-firmware p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
