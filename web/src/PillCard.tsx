@@ -4,8 +4,9 @@ import { DeleteOutlined, DisconnectOutlined, ExperimentOutlined, HeatMapOutlined
 import { BroadcastReading, ConfigPatch, ConfigStatus, FirmwareImage, HardwareSample, loadFirmwareImage, OpenPillClient, OtaProgress, parseBroadcast, PublicConfig } from "./ble";
 import { checkLatestRelease, ReleaseCheck } from "./releases";
 import SettingsModal from "./SettingsModal";
+import PillAppearanceFields from "./PillAppearanceFields";
 import FirmwareUpdateModal from "./FirmwareUpdateModal";
-import type { SavedPill } from "./savedPills";
+import { CAP_COLORS, type CapColor, type SavedPill } from "./savedPills";
 import { fromBroadcast, fromHardware, HistoricalReading, loadReadings, saveReading, syncServerHistory } from "./history";
 import PillHistory, { HistoryPeriod } from "./PillHistory";
 import CalibrationModal from "./CalibrationModal";
@@ -38,13 +39,14 @@ function siteFirmwareState(config: Pick<PublicConfig, "firmware_version" | "firm
   return { version: image.version, state: config.firmware_elf_sha256 ? "different" : "unknown" };
 }
 
-export default function PillCard({ pill, device, autoConnect, units, historyKeyRevision, onRemember, onForget, onChoose }: {
+export default function PillCard({ pill, device, autoConnect, units, historyKeyRevision, onRemember, onUpdateAppearance, onForget, onChoose }: {
   pill: SavedPill;
   device?: BluetoothDevice;
   autoConnect: boolean;
   units: UnitPreferences;
   historyKeyRevision: number;
   onRemember: (pill: SavedPill) => void;
+  onUpdateAppearance: (customName: string, capColor?: CapColor) => void;
   onForget: () => void;
   onChoose: () => void;
 }) {
@@ -64,6 +66,8 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
   const [lastRead, setLastRead] = useState<Date | null>(null);
   const [status, setStatus] = useState<ConfigStatus>({ version: 1, state: 0, message: "Ready" });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [draftCustomName, setDraftCustomName] = useState(pill.customName ?? "");
+  const [draftCapColor, setDraftCapColor] = useState<CapColor | undefined>(pill.capColor);
   const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -476,7 +480,14 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
     }
   }
 
-  const name = device?.name || pill.name;
+  const cap = CAP_COLORS.find((color) => color.value === pill.capColor);
+  const name = pill.customName?.trim() || `${cap ? `${cap.label} ` : ""}${device?.name || pill.name}`;
+  const openSettings = () => {
+    setDraftCustomName(pill.customName ?? "");
+    setDraftCapColor(pill.capColor);
+    setSettingsOpen(true);
+  };
+  const saveAppearance = () => onUpdateAppearance(draftCustomName.trim(), draftCapColor);
   const recentBroadcast = broadcast && now - broadcast.at.getTime() < 30 * 60_000;
   const readingSource = connected && sample ? "connected" : recentBroadcast ? "broadcast" : pill.sample ? "saved" : "none";
   const shownSample = readingSource === "connected" ? sample : readingSource === "saved" ? pill.sample : null;
@@ -532,7 +543,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
     {releaseError && <p role="status">{releaseError}</p>}
   </section>;
 
-  return <Card className="pill-card" title={<div className="pill-heading"><span className="pill-name"><span className="pill-dot" />{name}</span>
+  return <Card className="pill-card" title={<div className="pill-heading"><span className="pill-name"><span className="pill-dot" style={cap ? { backgroundColor: cap.hex } : undefined} />{name}</span>
     {lastSeenAt > 0 && <span className="pill-last-seen">Last seen {new Date(lastSeenAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>}
   </div>}
     extra={<span className="pill-card-menu">{connected && <Tooltip title={busy === "refreshing" ? "Reading sensors…" : "Connected"}>{busy === "refreshing" ? <LoadingOutlined className="pill-connected-icon" spin aria-label="Reading sensors" /> : <LinkOutlined className="pill-connected-icon" aria-label="Connected" />}</Tooltip>}
@@ -546,7 +557,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
         ] : [])
       ], onClick: ({ key }) => {
         if (key === "connect") { if (device) void connect(); else onChoose(); }
-        if (key === "settings") setSettingsOpen(true);
+        if (key === "settings") openSettings();
         if (key === "calibration") setCalibrationOpen(true);
         if (key === "refresh") void refresh();
         if (key === "disconnect") client?.disconnect();
@@ -565,12 +576,14 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
     </div>} />
     {updateOpen && <FirmwareUpdateModal name={name} config={firmwareIdentity} connected={connected} reconnecting={!!reconnectAfterUpdate} onClose={() => setUpdateOpen(false)} onInstall={installUpdate} />}
     {calibrationOpen && <CalibrationModal open name={name} storageId={profileStorageId} historyId={profileServiceId} readKey={profileServiceId ? loadReadKey(profileServiceId) : null} controlKey={profileServiceId ? loadControlKey(profileServiceId) : null} readings={history} onClose={() => setCalibrationOpen(false)} onChange={profileChanged} />}
-    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} historyControlKey={loadControlKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory} /> :
+    {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} historyControlKey={loadControlKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory}
+      customName={draftCustomName} capColor={draftCapColor} onNameChange={setDraftCustomName} onCapColorChange={setDraftCapColor} onSaveAppearance={saveAppearance} /> :
       <Modal open title={`Settings · ${name}`} onCancel={() => setSettingsOpen(false)} footer={null}>
+        <PillAppearanceFields customName={draftCustomName} capColor={draftCapColor} onNameChange={setDraftCustomName} onCapColorChange={setDraftCapColor} />
         <p className="muted">Connect to your Pill to view or change its settings.</p>
         <Button type="primary" onClick={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} loading={busy === "connecting"}>Connect to Pill</Button>
         {firmwareInfo}
-        <div className="modal-actions"><Popconfirm title="Forget this Pill?" description="Removes its saved card and readings from this browser." onConfirm={onForget} okText="Forget" cancelText="Keep"><Button danger icon={<DeleteOutlined />}>Forget Pill</Button></Popconfirm><Button onClick={() => setSettingsOpen(false)}>Close</Button></div>
+        <div className="modal-actions"><Popconfirm title="Forget this Pill?" description="Removes its saved card and readings from this browser." onConfirm={onForget} okText="Forget" cancelText="Keep"><Button danger icon={<DeleteOutlined />}>Forget Pill</Button></Popconfirm><span /><Button onClick={() => setSettingsOpen(false)}>Cancel</Button><Button type="primary" onClick={() => { saveAppearance(); setSettingsOpen(false); }}>Save appearance</Button></div>
       </Modal>)}
   </Card>;
 }

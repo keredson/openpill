@@ -4,7 +4,7 @@ import { PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { choosePill } from "./ble";
 import PillCard from "./PillCard";
 import pillReady from "./assets/pill-ready.svg";
-import { loadSavedPills, SavedPill, shouldImportGrantedPills, storeSavedPills } from "./savedPills";
+import { loadSavedPills, SavedPill, shouldImportGrantedPills, storeSavedPills, type CapColor } from "./savedPills";
 import { deleteReadings } from "./history";
 import { forgetProfiles } from "./calibrationProfiles";
 import { handleInternalLink, routeUrl } from "./navigation";
@@ -55,9 +55,15 @@ export default function App() {
     setPills((current) => {
       const existing = current.find((item) => item.id === pill.id);
       return existing
-        ? current.map((item) => item.id === pill.id ? { ...item, ...pill } : item)
+        ? current.map((item) => item.id === pill.id ? { ...item, ...pill,
+          customName: item.customName, capColor: item.capColor } : item)
         : [...current, pill];
     });
+  }
+
+  function updateAppearance(id: string, customName: string, capColor?: CapColor) {
+    setPills((current) => current.map((pill) => pill.id === id
+      ? { ...pill, customName: customName || undefined, capColor } : pill));
   }
 
   function forgetPill(id: string) {
@@ -138,7 +144,7 @@ export default function App() {
         <div className="section-heading"><div><h1 id="pills-title">Your Pills</h1><p>Readings and controls for the Pills you’ve added.</p></div>
           <span><Button onClick={() => setImportOpen(true)}>Import history key</Button> <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { setError(""); setGuideOpen(true); }}>Add a Pill</Button></span>
         </div>
-        <div className="pill-grid">{pills.map((pill) => <PillCard key={pill.id} pill={pill} device={devices.get(pill.id)} autoConnect={autoConnectId === pill.id} units={units} historyKeyRevision={historyKeyRevision} onRemember={rememberPill} onForget={() => forgetPill(pill.id)} onChoose={() => { setError(""); setGuideOpen(true); }} />)}</div>
+        <div className="pill-grid">{pills.map((pill) => <PillCard key={pill.id} pill={pill} device={devices.get(pill.id)} autoConnect={autoConnectId === pill.id} units={units} historyKeyRevision={historyKeyRevision} onRemember={rememberPill} onUpdateAppearance={(customName, capColor) => updateAppearance(pill.id, customName, capColor)} onForget={() => forgetPill(pill.id)} onChoose={() => { setError(""); setGuideOpen(true); }} />)}</div>
       </section>}
 
       {pills.length === 0 && <><Card className="connect-guide">{connectionGuide}</Card><Button onClick={() => setImportOpen(true)}>Import history key</Button></>}

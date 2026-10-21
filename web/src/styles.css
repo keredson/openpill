@@ -53,6 +53,10 @@ h3 { font-size: 18px; font-weight: 680; }
 .pill-history-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 13px; font-weight: 700; }
 .pill-history-heading .ant-segmented { font-size: 11px; }
 .pill-history-graph { display: block; width: 100%; height: auto; }
+.pill-history-graph-wrap { position: relative; }
+.pill-history-hover-line { stroke: #74847a; stroke-width: 1; stroke-dasharray: 3 4; pointer-events: none; }
+.pill-history-tooltip { position: absolute; top: 4%; z-index: 1; display: grid; gap: 2px; min-width: 138px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 5px 16px #263c3626; font-size: 11px; white-space: nowrap; transform: translateX(-50%); pointer-events: none; }
+.pill-history-tooltip strong { color: var(--ink); }
 .pill-history-label { font-size: 11px; font-weight: 700; }
 .pill-history-range, .pill-history-axis { fill: #718076; font-size: 9px; }
 .pill-history-band { fill: none; }
@@ -152,6 +156,8 @@ h3 { font-size: 18px; font-weight: 680; }
 .wifi-settings-row strong, .interval-settings-row strong, .firmware-settings-row strong, .settings-detail-row strong { font-size: 13px; }
 .wifi-settings-row small, .interval-settings-row small, .firmware-settings-row small, .settings-detail-row small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .settings-detail-row > .ant-input, .settings-row-control { width: min(100%, 280px); flex: none; }
+.pill-appearance-fields .settings-detail-row > .ant-select { width: min(100%, 280px); flex: none; }
+.pill-appearance-fields .settings-detail-row { flex-wrap: wrap; }
 .settings-row-control { display: flex !important; flex-direction: column; align-items: stretch; gap: 6px; }
 .settings-row-control .ant-checkbox-wrapper { font-size: 12px; }
 .settings-detail-row > span.settings-post-label { flex-direction: row; align-items: baseline; gap: 5px; white-space: nowrap; }
@@ -172,7 +178,6 @@ h3 { font-size: 18px; font-weight: 680; }
 .calibration-add label { flex: 1 1 140px; margin: 0; }
 .calibration-add label:first-child { flex-basis: 185px; }
 .calibration-add .ant-btn { margin-bottom: 0; }
-.calibration-reset { margin-top: 20px; }
 .interval-settings-control { display: inline-flex; align-items: center; gap: 7px; flex: none; font-size: 13px; }
 .interval-settings-control .ant-select { width: 140px; }
 .settings-firmware p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }

@@ -2,9 +2,20 @@ import type { HardwareSample, PublicConfig } from "./ble";
 
 const STORAGE_KEY = "openpill.savedPills.v1";
 
+export const CAP_COLORS = [
+  { value: "yellow", label: "Yellow", hex: "#e5b83d" },
+  { value: "red", label: "Red", hex: "#c85d56" },
+  { value: "green", label: "Green", hex: "#4f9d71" },
+  { value: "blue", label: "Blue", hex: "#5d83c4" },
+] as const;
+
+export type CapColor = typeof CAP_COLORS[number]["value"];
+
 export interface SavedPill {
   id: string;
   name: string;
+  customName?: string;
+  capColor?: CapColor;
   firmwareVersion?: string;
   sample?: HardwareSample;
   config?: PublicConfig;

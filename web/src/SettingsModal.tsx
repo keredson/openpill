@@ -3,6 +3,8 @@ import { Alert, Button, Input, Modal, Popconfirm, Select, Switch } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import { ConfigPatch, ConfigStatus, PublicConfig, WifiNetwork } from "./ble";
 import WifiSetupModal from "./WifiSetupModal";
+import PillAppearanceFields from "./PillAppearanceFields";
+import type { CapColor } from "./savedPills";
 
 const reportingIntervals = [5, 10, 15, 30, 60, 120, 240, 360, 720, 1440].map((minutes) => ({
   value: minutes * 60,
@@ -48,6 +50,11 @@ function normalizePostUrl(value: string, allowHttp: boolean): string {
 
 type Props = {
   name: string;
+  customName: string;
+  capColor?: CapColor;
+  onNameChange: (value: string) => void;
+  onCapColorChange: (value: CapColor | undefined) => void;
+  onSaveAppearance: () => void;
   config: PublicConfig;
   connected: boolean;
   connecting: boolean;
@@ -68,7 +75,7 @@ type Props = {
   onResetHistory: () => Promise<void>;
 };
 
-export default function SettingsModal({ name, config, connected, connecting, onConnect, busy, saving, testing, status, onClose, onSave, onTestPost, onScanWifi, onConfigureWifi, onForget, firmwareInfo, historyReadKey, historyControlKey, onResetHistory }: Props) {
+export default function SettingsModal({ name, customName, capColor, onNameChange, onCapColorChange, onSaveAppearance, config, connected, connecting, onConnect, busy, saving, testing, status, onClose, onSave, onTestPost, onScanWifi, onConfigureWifi, onForget, firmwareInfo, historyReadKey, historyControlKey, onResetHistory }: Props) {
   const [draft, setDraft] = useState<PublicConfig>({ ...config });
   const [wifiOpen, setWifiOpen] = useState(false);
   const [exampleOpen, setExampleOpen] = useState(false);
@@ -103,9 +110,8 @@ export default function SettingsModal({ name, config, connected, connecting, onC
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!connected) return;
     let endpointUrl = draft.endpoint_url;
-    if (draft.wifi_telemetry) {
+    if (connected && draft.wifi_telemetry) {
       try {
         endpointUrl = normalizePostUrl(endpointUrl, draft.allow_http);
         update("endpoint_url", endpointUrl);
@@ -125,6 +131,16 @@ export default function SettingsModal({ name, config, connected, connecting, onC
       allow_http: draft.allow_http,
       endpoint_url: endpointUrl
     };
+    const configChanged = patch.wake_interval_s !== config.wake_interval_s ||
+      patch.wifi_timeout_s !== config.wifi_timeout_s ||
+      patch.ble_telemetry !== config.ble_telemetry ||
+      patch.wifi_telemetry !== config.wifi_telemetry ||
+      patch.history_telemetry !== !!config.history_telemetry ||
+      patch.auto_wifi_update !== config.auto_wifi_update ||
+      patch.allow_http !== config.allow_http ||
+      patch.endpoint_url !== config.endpoint_url;
+    onSaveAppearance();
+    if (!connected || !configChanged) { onClose(); return; }
     await onSave(patch);
   }
 
@@ -143,10 +159,11 @@ export default function SettingsModal({ name, config, connected, connecting, onC
   return <><Modal open title={`Settings · ${name}`} onCancel={onClose} footer={null}
     width={560} destroyOnHidden maskClosable={!busy} closable={!busy} keyboard={!busy}>
     <form onSubmit={(event) => void submit(event)} className="settings-form" autoComplete="off">
-      {!connected && <div className="settings-offline-notice"><span>Connect to your Pill to change these settings.</span><Button type="primary" onClick={onConnect} loading={connecting}>Connect</Button></div>}
+      {!connected && <div className="settings-offline-notice"><span>Connect to change the Pill's device settings. Name and cap color can be saved now.</span><Button type="primary" onClick={onConnect} loading={connecting}>Connect</Button></div>}
       {saving && <Alert type="info" showIcon message={status.state === 3 ? "Testing Wi-Fi and sending a reading…" : "Saving settings…"} />}
       <div className="settings-content">
         <section>
+          <PillAppearanceFields customName={customName} capColor={capColor} onNameChange={onNameChange} onCapColorChange={onCapColorChange} />
           <label className="switch-setting"><span><strong>Bluetooth broadcast</strong><small>Send a reading at each reporting interval</small></span><Switch checked={draft.ble_telemetry} disabled={!connected || busy} onChange={(value) => update("ble_telemetry", value)} /></label>
           <div className="wifi-settings-row"><span><strong>Wi-Fi</strong><small>{config.wifi_ssid ? `${config.wifi_ssid} · Connected` : "Not connected"}</small></span><Button onClick={() => setWifiOpen(true)} disabled={!connected || busy}>Configure</Button></div>
           {config.wifi_ssid && <label className="interval-settings-row"><span><strong>Wi-Fi readings</strong><small>Choose where the Pill sends readings</small></span><span className="interval-settings-control"><Select aria-label="Wi-Fi readings destination" value={destination} disabled={!connected || busy} onChange={selectDestination} options={[
@@ -163,7 +180,7 @@ export default function SettingsModal({ name, config, connected, connecting, onC
             {config.has_history_read_hash && !historyReadKey && <Popconfirm title="Start a new history?" description="The old server history will be inaccessible without its read key." onConfirm={() => void onResetHistory()} okText="Start new history" cancelText="Cancel"><Button htmlType="button" danger disabled={!connected || busy}>Start new history</Button></Popconfirm>}
           </>}
           {draft.wifi_telemetry && <>
-            <div className="settings-detail-row"><span className="settings-post-label"><label htmlFor="openpill-post-url"><strong>POST URL</strong></label><Button className="settings-example-link" type="link" size="small" onClick={() => setExampleOpen(true)}>(example)</Button></span><span className="settings-post-control"><Input id="openpill-post-url" type="text" inputMode="url" name="openpillPostEndpointUrl" autoComplete="off" maxLength={256} required disabled={!connected || busy} value={draft.endpoint_url} onChange={(event) => { update("endpoint_url", event.target.value); setTestResult(null); }} onBlur={(event) => update("endpoint_url", withDefaultProtocol(event.target.value))} placeholder="https://example.com/readings" /><Button htmlType="button" onClick={() => void testPost()} loading={testing} disabled={!connected || busy || !config.wifi_ssid || !draft.endpoint_url.trim()}>Test</Button></span></div>
+            <div className="settings-detail-row"><span className="settings-post-label"><label htmlFor="openpill-post-url"><strong>POST URL</strong></label><Button className="settings-example-link" type="link" size="small" onClick={() => setExampleOpen(true)}>(example)</Button></span><span className="settings-post-control"><Input id="openpill-post-url" type="text" inputMode="url" name="openpillPostEndpointUrl" autoComplete="off" maxLength={256} required={connected} disabled={!connected || busy} value={draft.endpoint_url} onChange={(event) => { update("endpoint_url", event.target.value); setTestResult(null); }} onBlur={(event) => update("endpoint_url", withDefaultProtocol(event.target.value))} placeholder="https://example.com/readings" /><Button htmlType="button" onClick={() => void testPost()} loading={testing} disabled={!connected || busy || !config.wifi_ssid || !draft.endpoint_url.trim()}>Test</Button></span></div>
             {testResult && <Alert className="settings-test-result" type={testResult.tone} showIcon title={testResult.message} />}
           </>}
           {config.wifi_ssid && <label className="switch-setting"><span><strong>Automatic firmware updates</strong><small>Check weekly over Wi-Fi; replaces the previous firmware slot</small></span><Switch checked={draft.auto_wifi_update} disabled={!connected || busy} onChange={(value) => update("auto_wifi_update", value)} /></label>}
@@ -172,7 +189,7 @@ export default function SettingsModal({ name, config, connected, connecting, onC
           {!draft.ble_telemetry && !draft.wifi_telemetry && !draft.history_telemetry && <Alert type="info" message="Both reporting methods are off. The Pill will sleep until moved." />}
         </section>
       </div>
-      <div className="modal-actions"><Popconfirm title="Forget this Pill?" description="Removes its saved card and readings from this browser." onConfirm={onForget} okText="Forget" cancelText="Keep"><Button danger icon={<DeleteOutlined />} disabled={!connected || busy}>Forget Pill</Button></Popconfirm><span>{draft.wifi_telemetry || draft.history_telemetry ? "Saving also sends a test reading." : ""}</span><Button onClick={onClose} disabled={busy}>Cancel</Button><Button type="primary" htmlType="submit" loading={saving} disabled={!connected || busy}>Save settings</Button></div>
+      <div className="modal-actions"><Popconfirm title="Forget this Pill?" description="Removes its saved card and readings from this browser." onConfirm={onForget} okText="Forget" cancelText="Keep"><Button danger icon={<DeleteOutlined />} disabled={!connected || busy}>Forget Pill</Button></Popconfirm><span>{connected && (draft.wifi_telemetry || draft.history_telemetry) ? "Saving device settings also sends a test reading." : ""}</span><Button onClick={onClose} disabled={busy}>Cancel</Button><Button type="primary" htmlType="submit" loading={saving} disabled={busy}>{connected ? "Save settings" : "Save appearance"}</Button></div>
     </form>
   </Modal><Modal open={exampleOpen} title="Example POST payload" onCancel={() => setExampleOpen(false)} footer={null} width={520} destroyOnHidden>
     <p>The Pill sends JSON with <code>Content-Type: application/json</code>. Fields for unavailable readings are omitted.</p>

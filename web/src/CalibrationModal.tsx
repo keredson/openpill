@@ -140,7 +140,9 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
   }
 
   return <Modal open={open} title={`Calibration · ${name}`} onCancel={onClose}
-    footer={<><Button onClick={onClose}>Close</Button><Button type="primary" disabled={!canEdit} onClick={save}>Save</Button></>}
+    footer={<>{canEdit && <Popconfirm title="Reset calibration?" description="This clears the current reference points. Save to apply."
+      onConfirm={resetCalibration}><Button danger>Reset calibration</Button></Popconfirm>}
+      <Button type="primary" disabled={!canEdit} onClick={save}>Save</Button></>}
     width={680} destroyOnHidden className="calibration-modal">
     {historyId && !canEdit && <Alert type="info" showIcon message="This phone has the read key only. Import the control key to edit calibration." />}
     {message && <Alert type="info" showIcon message={message} style={{ marginBottom: 12 }} />}
@@ -167,7 +169,5 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
       <label>Tilt (°)<Input type="number" min={0} max={90} step="0.01" value={tilt} onChange={(event) => setTilt(event.target.value)} placeholder="From Pill" /></label>
       <Button onClick={addPoint}>Add reference</Button>
     </div>}
-    {canEdit && <Popconfirm title="Reset calibration?" description="This clears the current reference points. Save to apply."
-      onConfirm={resetCalibration}><Button danger className="calibration-reset">Reset calibration</Button></Popconfirm>}
   </Modal>;
 }
