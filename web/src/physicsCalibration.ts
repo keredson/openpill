@@ -103,7 +103,7 @@ function solveBalance(points: { angle: number; sg: number }[], massG: number, le
 export function fitPhysicalProfile(profile: CalibrationProfile): PhysicalFit | null {
   const points = profile.points.filter((point): point is CalibrationPoint & { angle: number } =>
     point.angle != null && Number.isFinite(point.angle) && Number.isFinite(point.sg));
-  if (points.length < (profile.massG == null ? 5 : 4) ||
+  if (points.length < 3 ||
       Math.max(...points.map((point) => point.angle)) - Math.min(...points.map((point) => point.angle)) < 8) return null;
   let best: PhysicalFit | null = null;
   const masses = profile.massG == null

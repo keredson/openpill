@@ -161,7 +161,7 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     <div className="calibration-instructions">
       <strong>How to calibrate</strong>
       <p>Float the Pill in a liquid with known gravity, let it settle, then enter that gravity and select Add. Water is a useful first point at about 1.000 SG. Add reads the tilt from the connected Pill, or uses its latest saved reading while offline.</p>
-      <p>OpenPill’s full physical fit needs at least 4 points with a known dry mass, or 5 without one, spanning 8° or more of tilt. Then Save. A single water point can adjust an existing curve, but OpenPill does not yet offer that mode.</p>
+      <p>OpenPill’s physical fit needs at least 3 points spanning 8° or more of tilt. A fourth point at a different gravity helps check accuracy. Then Save. A single water point can adjust an existing curve, but OpenPill does not yet offer that mode.</p>
     </div>
     <label>Dry mass (g)<Input type="number" min={50} max={180} step="0.1" value={mass}
       disabled={!canEdit} onChange={(event) => { edited.current = true; setMass(event.target.value); }} placeholder="Optional" /></label>
