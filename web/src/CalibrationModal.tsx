@@ -34,7 +34,6 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
   const [time, setTime] = useState(() => localDateTime(Date.now()));
   const [gravity, setGravity] = useState("");
   const [adding, setAdding] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [message, setMessage] = useState("");
   const edited = useRef(false);
   const canEdit = !historyId || !!controlKey;
@@ -104,7 +103,6 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
       edited.current = true;
       setProfiles(active ? [...profiles.slice(0, -1), next] : [...profiles, next]);
       setGravity("");
-      setShowAddForm(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not read the Pill tilt.");
     } finally {
@@ -120,7 +118,6 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     const startsAt = Math.max(Date.now(), (previous.at(-1)?.startsAt ?? 0) + 1);
     setProfiles([...previous.slice(-15), newProfile(startsAt, massG)]);
     setGravity("");
-    setShowAddForm(false);
     setTime(localDateTime(startsAt));
     setMessage("");
   }
@@ -169,16 +166,14 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
             <td>{canEdit && <Button size="small" danger onClick={() => updateActive({ ...active,
               points: active.points.filter((old) => old.at !== point.at) })}>Remove</Button>}</td>
           </tr>)}
-          {!active?.points.length && !showAddForm && <tr><td colSpan={4} className="calibration-empty">No calibration points.{canEdit && <Button type="link" onClick={() => setShowAddForm(true)}>Add</Button>}</td></tr>}
-          {canEdit && showAddForm && <tr className="calibration-add-row">
+          {canEdit && <tr className="calibration-add-row">
             <td>{onReadLiveTilt ? "Now" : <Input type="datetime-local" aria-label="Measured at" value={time} onChange={(event) => setTime(event.target.value)} />}</td>
             <td><Input type="number" min={0.7} max={1.6} step="0.001" aria-label="Gravity (SG)" value={gravity} onChange={(event) => setGravity(event.target.value)} placeholder="1.050" /></td>
             <td className="calibration-tilt-source">{onReadLiveTilt ? "Read from Pill" : latestTilt ? `${latestTilt.tiltDegrees!.toFixed(2)}°` : "No saved tilt"}</td>
-            <td><Button size="small" type="primary" onClick={() => void addPoint()} loading={adding} disabled={!onReadLiveTilt && !latestTilt}>Add</Button><Button size="small" type="link" disabled={adding} onClick={() => setShowAddForm(false)}>Cancel</Button></td>
+            <td><Button size="small" type="primary" onClick={() => void addPoint()} loading={adding} disabled={!onReadLiveTilt && !latestTilt}>Add</Button></td>
           </tr>}
         </tbody>
       </table>
     </div>
-    {canEdit && !!active?.points.length && !showAddForm && <Button type="link" className="calibration-add-link" onClick={() => setShowAddForm(true)}>Add</Button>}
   </Modal>;
 }
