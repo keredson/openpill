@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Modal, Popconfirm } from "antd";
 import type { HistoricalReading } from "./history";
-import { firmwareCurve, interpolatedAngle, type CalibrationProfile } from "./physicsCalibration";
+import { firmwareCurve, type CalibrationProfile } from "./physicsCalibration";
 import { loadProfiles, resolvePendingProfiles, storeProfiles, syncProfiles, type SavedProfiles } from "./calibrationProfiles";
 
 function localDateTime(at: number): string {
@@ -17,7 +17,7 @@ function newProfile(startsAt: number, massG: number | null): CalibrationProfile 
   };
 }
 
-export default function CalibrationModal({ open, name, storageId, historyId, readKey, controlKey, readings, onClose, onChange }: {
+export default function CalibrationModal({ open, name, storageId, historyId, readKey, controlKey, readings, onReadLiveTilt, onClose, onChange }: {
   open: boolean;
   name: string;
   storageId: string;
@@ -25,6 +25,7 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
   readKey: string | null;
   controlKey: string | null;
   readings: HistoricalReading[];
+  onReadLiveTilt?: () => Promise<{ angle: number; at: number }>;
   onClose: () => void;
   onChange: () => void;
 }) {
@@ -32,11 +33,15 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
   const [mass, setMass] = useState(() => loadProfiles(storageId).document.profiles.at(-1)?.massG?.toString() ?? "");
   const [time, setTime] = useState(() => localDateTime(Date.now()));
   const [gravity, setGravity] = useState("");
-  const [tilt, setTilt] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [message, setMessage] = useState("");
   const edited = useRef(false);
   const canEdit = !historyId || !!controlKey;
   const active = profiles.at(-1);
+  const latestTilt = readings.reduce<HistoricalReading | null>((latest, reading) =>
+    Number.isFinite(reading.tiltDegrees) && reading.tiltDegrees! >= 0 && reading.tiltDegrees! <= 90 &&
+    (!latest || reading.at > latest.at) ? reading : latest, null);
 
   function showProfiles(next: CalibrationProfile[]) {
     setProfiles(next);
@@ -71,35 +76,40 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     setMessage("");
   }
 
-  function addPoint() {
+  async function addPoint() {
     if (!canEdit) return;
-    let at = Date.parse(time);
     const sg = Number(gravity);
-    const enteredTilt = tilt.trim() ? Number(tilt) : null;
-    if (!Number.isSafeInteger(at) || !gravity.trim() || !Number.isFinite(sg) || sg < 0.7 || sg > 1.6) {
-      setMessage("Enter a measurement time and a specific gravity from 0.700 to 1.600."); return;
-    }
-    if (enteredTilt != null && (!Number.isFinite(enteredTilt) || enteredTilt < 0 || enteredTilt > 90)) {
-      setMessage("Enter a tilt from 0° to 90°, or leave it blank to use Pill readings."); return;
-    }
-    if (active && at < active.startsAt && active.startsAt - at < 60_000) at = active.startsAt;
-    if (active && at < active.startsAt) {
-      setMessage("The measurement must be after the current calibration began."); return;
-    }
-    if (active?.points.some((point) => point.at === at)) {
-      setMessage("There is already a reference at that time."); return;
+    if (!gravity.trim() || !Number.isFinite(sg) || sg < 0.7 || sg > 1.6) {
+      setMessage("Enter a specific gravity from 0.700 to 1.600."); return;
     }
     if ((active?.points.length ?? 0) >= 16) {
       setMessage("A calibration can hold up to 16 reference points."); return;
     }
-    const profile = active ?? newProfile(at, null);
-    const angle = enteredTilt ?? interpolatedAngle(readings, at);
-    const next = { ...profile, points: [...profile.points, { at, sg, angle }].sort((a, b) => a.at - b.at) };
-    edited.current = true;
-    setProfiles(active ? [...profiles.slice(0, -1), next] : [...profiles, next]);
-    setGravity("");
-    setTilt("");
-    setMessage(angle == null ? "Reference added. Tilt will fill in when nearby Pill readings arrive." : "");
+    if (!onReadLiveTilt && !latestTilt) {
+      setMessage("No saved tilt reading is available. Connect to the Pill and refresh its readings first."); return;
+    }
+    setAdding(true);
+    setMessage("");
+    try {
+      const live = onReadLiveTilt ? await onReadLiveTilt() : null;
+      const angle = live?.angle ?? latestTilt!.tiltDegrees!;
+      let at = live?.at ?? Date.parse(time);
+      if (!Number.isFinite(angle) || angle < 0 || angle > 90) throw new Error("The Pill did not provide a valid tilt reading.");
+      if (!Number.isSafeInteger(at)) throw new Error("Enter a valid measurement time.");
+      if (active && at < active.startsAt && active.startsAt - at < 60_000) at = active.startsAt;
+      if (active && at < active.startsAt) throw new Error("The measurement must be after the current calibration began.");
+      if (active?.points.some((point) => point.at === at)) throw new Error("There is already a reference at that time.");
+      const profile = active ?? newProfile(at, null);
+      const next = { ...profile, points: [...profile.points, { at, sg, angle }].sort((a, b) => a.at - b.at) };
+      edited.current = true;
+      setProfiles(active ? [...profiles.slice(0, -1), next] : [...profiles, next]);
+      setGravity("");
+      setShowAddForm(false);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not read the Pill tilt.");
+    } finally {
+      setAdding(false);
+    }
   }
 
   function resetCalibration() {
@@ -110,7 +120,7 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
     const startsAt = Math.max(Date.now(), (previous.at(-1)?.startsAt ?? 0) + 1);
     setProfiles([...previous.slice(-15), newProfile(startsAt, massG)]);
     setGravity("");
-    setTilt("");
+    setShowAddForm(false);
     setTime(localDateTime(startsAt));
     setMessage("");
   }
@@ -141,8 +151,8 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
 
   return <Modal open={open} title={`Calibration · ${name}`} onCancel={onClose}
     footer={<>{canEdit && <Popconfirm title="Reset calibration?" description="This clears the current reference points. Save to apply."
-      onConfirm={resetCalibration}><Button danger>Reset calibration</Button></Popconfirm>}
-      <Button type="primary" disabled={!canEdit} onClick={save}>Save</Button></>}
+      onConfirm={resetCalibration}><Button danger disabled={adding}>Reset calibration</Button></Popconfirm>}
+      <Button type="primary" disabled={!canEdit || adding} onClick={save}>Save</Button></>}
     width={680} destroyOnHidden className="calibration-modal">
     {historyId && !canEdit && <Alert type="info" showIcon message="This phone has the read key only. Import the control key to edit calibration." />}
     {message && <Alert type="info" showIcon message={message} style={{ marginBottom: 12 }} />}
@@ -159,15 +169,16 @@ export default function CalibrationModal({ open, name, storageId, historyId, rea
             <td>{canEdit && <Button size="small" danger onClick={() => updateActive({ ...active,
               points: active.points.filter((old) => old.at !== point.at) })}>Remove</Button>}</td>
           </tr>)}
-          {!active?.points.length && <tr><td colSpan={4} className="calibration-empty">No reference points yet.</td></tr>}
+          {!active?.points.length && !showAddForm && <tr><td colSpan={4} className="calibration-empty">No calibration points.{canEdit && <Button type="link" onClick={() => setShowAddForm(true)}>Add</Button>}</td></tr>}
+          {canEdit && showAddForm && <tr className="calibration-add-row">
+            <td>{onReadLiveTilt ? "Now" : <Input type="datetime-local" aria-label="Measured at" value={time} onChange={(event) => setTime(event.target.value)} />}</td>
+            <td><Input type="number" min={0.7} max={1.6} step="0.001" aria-label="Gravity (SG)" value={gravity} onChange={(event) => setGravity(event.target.value)} placeholder="1.050" /></td>
+            <td className="calibration-tilt-source">{onReadLiveTilt ? "Read from Pill" : latestTilt ? `${latestTilt.tiltDegrees!.toFixed(2)}°` : "No saved tilt"}</td>
+            <td><Button size="small" type="primary" onClick={() => void addPoint()} loading={adding} disabled={!onReadLiveTilt && !latestTilt}>Add</Button><Button size="small" type="link" disabled={adding} onClick={() => setShowAddForm(false)}>Cancel</Button></td>
+          </tr>}
         </tbody>
       </table>
     </div>
-    {canEdit && <div className="calibration-add">
-      <label>Measured at<Input type="datetime-local" value={time} onChange={(event) => setTime(event.target.value)} /></label>
-      <label>Gravity (SG)<Input type="number" min={0.7} max={1.6} step="0.001" value={gravity} onChange={(event) => setGravity(event.target.value)} placeholder="1.050" /></label>
-      <label>Tilt (°)<Input type="number" min={0} max={90} step="0.01" value={tilt} onChange={(event) => setTilt(event.target.value)} placeholder="From Pill" /></label>
-      <Button onClick={addPoint}>Add reference</Button>
-    </div>}
+    {canEdit && !!active?.points.length && !showAddForm && <Button type="link" className="calibration-add-link" onClick={() => setShowAddForm(true)}>Add</Button>}
   </Modal>;
 }

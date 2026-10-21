@@ -312,6 +312,27 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
     }
   }
 
+  async function readCalibrationTilt(): Promise<{ angle: number; at: number }> {
+    if (!client || !connected) throw new Error("Connect to the Pill before adding a reference.");
+    if (busy) throw new Error("Wait for the current Pill action to finish.");
+    setBusy("refreshing");
+    try {
+      const nextSample = await client.readHardware();
+      const at = Date.now();
+      const reading = fromHardware(pill.id, nextSample, at);
+      if (reading.tiltDegrees == null || !Number.isFinite(reading.tiltDegrees))
+        throw new Error("The Pill did not provide a valid tilt reading.");
+      await saveReading(reading);
+      setSample(nextSample);
+      setLastRead(new Date(at));
+      onRemember({ ...pill, sample: nextSample, readAt: at });
+      setHistoryRevision((current) => current + 1);
+      return { angle: reading.tiltDegrees, at };
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function save(patch: ConfigPatch) {
     if (!client) return;
     setBusy("saving");
@@ -575,7 +596,7 @@ export default function PillCard({ pill, device, autoConnect, units, historyKeyR
       <div><Tooltip title="Battery"><ThunderboltOutlined aria-label="Battery" /></Tooltip><strong>{battery}</strong></div>
     </div>} />
     {updateOpen && <FirmwareUpdateModal name={name} config={firmwareIdentity} connected={connected} reconnecting={!!reconnectAfterUpdate} onClose={() => setUpdateOpen(false)} onInstall={installUpdate} />}
-    {calibrationOpen && <CalibrationModal open name={name} storageId={profileStorageId} historyId={profileServiceId} readKey={profileServiceId ? loadReadKey(profileServiceId) : null} controlKey={profileServiceId ? loadControlKey(profileServiceId) : null} readings={history} onClose={() => setCalibrationOpen(false)} onChange={profileChanged} />}
+    {calibrationOpen && <CalibrationModal open name={name} storageId={profileStorageId} historyId={profileServiceId} readKey={profileServiceId ? loadReadKey(profileServiceId) : null} controlKey={profileServiceId ? loadControlKey(profileServiceId) : null} readings={history} onReadLiveTilt={connected ? readCalibrationTilt : undefined} onClose={() => setCalibrationOpen(false)} onChange={profileChanged} />}
     {settingsOpen && (config || pill.config ? <SettingsModal name={name} config={config ?? pill.config!} connected={connected} connecting={busy === "connecting"} onConnect={() => { if (device) void connect(); else { setSettingsOpen(false); onChoose(); } }} busy={busy === "saving" || busy === "testing"} saving={busy === "saving"} testing={busy === "testing"} status={status} onClose={() => setSettingsOpen(false)} onSave={save} onTestPost={testPost} onScanWifi={() => client!.scanWifiNetworks()} onConfigureWifi={configureWifi} onForget={onForget} firmwareInfo={firmwareInfo} historyReadKey={loadReadKey((config ?? pill.config)?.history_id || "")} historyControlKey={loadControlKey((config ?? pill.config)?.history_id || "")} onResetHistory={resetHistory}
       customName={draftCustomName} capColor={draftCapColor} onNameChange={setDraftCustomName} onCapColorChange={setDraftCapColor} onSaveAppearance={saveAppearance} /> :
       <Modal open title={`Settings · ${name}`} onCancel={() => setSettingsOpen(false)} footer={null}>
